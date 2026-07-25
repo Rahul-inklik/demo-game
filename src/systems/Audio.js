@@ -1,10 +1,17 @@
 /**
- * Audio.js — fully synthesised soundtrack and sound effects (Web Audio API).
+ * Audio.js — soundtrack and sound effects.
  *
- * Nothing is streamed or downloaded: music, wind, snow ambience and every SFX
- * are generated with oscillators and filtered noise, so audio can never fail to
- * "load". If the browser has no Web Audio support the system reports it once and
- * the game keeps running silently (the UI shows a notice).
+ * Background music: if a custom track is configured (Config.audio.musicTrack,
+ * e.g. an MP3 you drop into assets/audio/) it is played on loop as the
+ * background music. If that file is missing or unplayable, the built-in
+ * synthesised music takes over automatically, so there is never silence by
+ * accident.
+ *
+ * Everything else (wind, snow ambience and every SFX) is still generated with
+ * oscillators and filtered noise, so it can never fail to "load". If the
+ * browser has no Web Audio support the system reports it once and the game
+ * keeps running (the custom music track still plays, since it does not need
+ * Web Audio).
  */
 (function (global) {
   'use strict';
@@ -17,7 +24,14 @@
 
   // D major pentatonic — warm and folk-like, pleasant for a kids' adventure.
   const MELODY_SCALE = [62, 64, 66, 69, 71, 74, 76, 78];
-  const MELODY_PATTERN = [0, 2, 4, 3, 5, 4, 2, 1, 0, 2, 3, 5, 6, 5, 3, 2];
+  // A slow, breathing melody with plenty of rests (null = rest) so notes have
+  // room to ring out instead of feeling busy or plucky.
+  const MELODY_PATTERN = [
+    0, null, 2, null, 4, 3, null, 2,
+    1, null, 0, null, 2, 3, null, 2,
+    4, null, 5, null, 6, 5, null, 3,
+    2, null, 3, null, 4, 2, null, 0,
+  ];
   const PAD_CHORDS = [
     [50, 57, 62, 66], // D
     [45, 52, 57, 61], // A
@@ -35,10 +49,21 @@
       this.musicTimer = null;
       this.nextNoteTime = 0;
       this.step16 = 0;
-      this.tempo = 92;
+      // A gentle lullaby tempo — slow enough to feel relaxing, not busy.
+      this.tempo = 62;
       this.ambienceNodes = [];
       this.lastStepAt = 0;
       this.musicMode = 'idle';
+
+      // --- custom background music (an <audio> element, see _createMusicEl)
+      this.musicEl = null;
+      this.musicTrackReady = false;
+      this.musicTrackFailed = false;
+      this.musicWanted = false;
+      this.ducked = false;
+      this._musicFade = null;
+      this._pauseAfterFade = false;
+      this._createMusicEl();
     }
 
     /** Must be called from a user gesture (the Play / UI buttons do this). */
@@ -69,6 +94,20 @@
       this.sfxBus.gain.value = cfg.sfxVolume;
       this.sfxBus.connect(this.master);
 
+      // A gentle echo on the music bus only — this is most of what makes the
+      // lead melody feel soft and spacious rather than plucky and dry.
+      this.musicDelay = this.ctx.createDelay(1.2);
+      this.musicDelay.delayTime.value = 0.42;
+      this.musicFeedback = this.ctx.createGain();
+      this.musicFeedback.gain.value = 0.28;
+      this.musicEchoFilter = this.ctx.createBiquadFilter();
+      this.musicEchoFilter.type = 'lowpass';
+      this.musicEchoFilter.frequency.value = 2200;
+      this.musicDelay.connect(this.musicEchoFilter);
+      this.musicEchoFilter.connect(this.musicFeedback);
+      this.musicFeedback.connect(this.musicDelay);
+      this.musicDelay.connect(this.musicBus);
+
       this.noiseBuffer = this._createNoiseBuffer(2.2);
       return true;
     }
@@ -83,10 +122,13 @@
     setMuted(muted) {
       this.enabled = !muted;
       if (this.master) this.master.gain.value = muted ? 0 : TFW.Config.audio.masterVolume;
+      this._applyTrackVolume(0.2);
     }
 
     /** Duck music/ambience while a menu or the quiz is open. */
     setDucked(ducked) {
+      this.ducked = !!ducked;
+      this._applyTrackVolume(0.4);
       if (!this.ctx) return;
       const cfg = TFW.Config.audio;
       const t = this.now;
@@ -154,18 +196,177 @@
       this.windFilter.frequency.value = 420 + t * 620;
     }
 
+    // ------------------------------------------------ custom music track (MP3)
+
+    /**
+     * Builds the <audio> element for the custom background music and starts
+     * buffering it immediately (downloading needs no user gesture — only
+     * playback does).
+     *
+     * A plain HTMLAudioElement is used instead of a Web Audio
+     * MediaElementAudioSourceNode on purpose: when index.html is opened
+     * directly from file://, Web Audio treats a local media file as
+     * cross-origin and would play it as silence. Volume, muting and ducking are
+     * therefore applied to element.volume instead of the music bus.
+     */
+    _createMusicEl() {
+      const cfg = (TFW.Config && TFW.Config.audio) || {};
+      const src = cfg.musicTrack;
+      if (!src) return;                       // synth music was requested
+      if (!global.Audio) { this.musicTrackFailed = true; return; }
+
+      let el;
+      try {
+        el = new global.Audio();
+      } catch (e) {
+        this.musicTrackFailed = true;
+        return;
+      }
+      el.preload = 'auto';
+      el.loop = cfg.musicTrackLoop !== false;
+      el.volume = 0;                          // faded up when music starts
+      el.setAttribute('aria-hidden', 'true');
+      el.addEventListener('canplaythrough', () => { this.musicTrackReady = true; });
+      // The moment the MP3 is actually audible, guarantee the synthesised
+      // fallback is off — this is what prevents the two from ever overlapping,
+      // even if the fallback had already kicked in while the file was loading.
+      el.addEventListener('playing', () => {
+        this.musicTrackFailed = false;
+        this._stopSynthMusic();
+      });
+      // Missing file, wrong path or an unsupported format: fall back to the
+      // built-in synthesised music so the game is never left silent.
+      el.addEventListener('error', () => {
+        this.musicTrackFailed = true;
+        this.musicTrackReady = false;
+        if (this.musicWanted) this._startSynthMusic();
+      });
+      el.src = src;
+      this.musicEl = el;
+    }
+
+    /** True if a custom track is configured and has not failed to load. */
+    get usingCustomMusic() { return !!this.musicEl && !this.musicTrackFailed; }
+
+    /** Target element volume, honouring master volume, mute and ducking. */
+    _trackTargetVolume() {
+      const cfg = TFW.Config.audio;
+      if (!this.enabled) return 0;
+      const base = (cfg.musicTrackVolume === undefined ? cfg.musicVolume : cfg.musicTrackVolume);
+      const vol = base * cfg.masterVolume * (this.ducked ? 0.35 : 1);
+      return clamp(vol, 0, 1);
+    }
+
+    _applyTrackVolume(seconds) {
+      if (!this.musicEl || !this.musicWanted) return;
+      this._fadeTrack(this._trackTargetVolume(), seconds);
+    }
+
+    /** Linear volume ramp on the <audio> element (no Web Audio needed). */
+    _fadeTrack(target, seconds) {
+      const el = this.musicEl;
+      if (!el) return;
+      if (this._musicFade) {
+        global.clearInterval(this._musicFade);
+        this._musicFade = null;
+      }
+      const to = clamp(target, 0, 1);
+      const ms = Math.max(0, seconds === undefined ? 0 : seconds) * 1000;
+      const finish = () => {
+        el.volume = to;
+        if (to <= 0 && this._pauseAfterFade) {
+          this._pauseAfterFade = false;
+          try { el.pause(); } catch (e) { /* nothing playing */ }
+        }
+      };
+      if (ms < 40) { finish(); return; }
+
+      const from = el.volume;
+      const clock = () => (global.performance && global.performance.now ? global.performance.now() : Date.now());
+      const started = clock();
+      this._musicFade = global.setInterval(() => {
+        const k = clamp((clock() - started) / ms, 0, 1);
+        el.volume = clamp(from + (to - from) * k, 0, 1);
+        if (k >= 1) {
+          global.clearInterval(this._musicFade);
+          this._musicFade = null;
+          finish();
+        }
+      }, 40);
+    }
+
+    /** @returns {boolean} true when the custom track took over the music. */
+    _startTrack() {
+      const el = this.musicEl;
+      if (!el || this.musicTrackFailed) return false;
+
+      this._pauseAfterFade = false;
+      el.loop = TFW.Config.audio.musicTrackLoop !== false;
+      const fade = TFW.Config.audio.musicFadeSeconds;
+
+      if (!el.paused) {                       // already playing — just re-level
+        this._fadeTrack(this._trackTargetVolume(), 0.3);
+        return true;
+      }
+
+      const played = el.play();
+      if (played && typeof played.then === 'function') {
+        played.then(() => {
+          // Playback really started: make sure no synth music doubles up.
+          this._stopSynthMusic();
+          if (this.musicWanted) this._fadeTrack(this._trackTargetVolume(), fade);
+        }).catch(() => {
+          // Blocked by autoplay rules, or the file could not be decoded.
+          if (el.error) this.musicTrackFailed = true;
+          if (this.musicWanted) this._startSynthMusic();
+        });
+      } else {
+        this._fadeTrack(this._trackTargetVolume(), fade);
+      }
+      return true;
+    }
+
+    _stopTrack(immediate) {
+      const el = this.musicEl;
+      if (!el) return;
+      if (immediate) {
+        this._pauseAfterFade = false;
+        this._fadeTrack(0, 0);
+        try { el.pause(); } catch (e) { /* nothing playing */ }
+        return;
+      }
+      this._pauseAfterFade = true;
+      this._fadeTrack(0, Math.min(0.6, TFW.Config.audio.musicFadeSeconds || 0.6));
+    }
+
     // -------------------------------------------------------------- music
 
+    /**
+     * Starts the background music: the custom MP3 when available, otherwise the
+     * synthesised soundtrack.
+     */
     startMusic(mode) {
-      if (!this.ready) return;
       this.musicMode = mode || 'adventure';
-      this.stopMusic();
+      this.musicWanted = true;
+      this._stopSynthMusic();
+      if (this._startTrack()) return;
+      this._startSynthMusic();
+    }
+
+    stopMusic() {
+      this.musicWanted = false;
+      this._stopSynthMusic();
+      this._stopTrack(false);
+    }
+
+    _startSynthMusic() {
+      if (!this.ready || this.musicTimer) return;
       this.nextNoteTime = this.now + 0.12;
       this.step16 = 0;
       this.musicTimer = global.setInterval(() => this._scheduleMusic(), 80);
     }
 
-    stopMusic() {
+    _stopSynthMusic() {
       if (this.musicTimer) {
         global.clearInterval(this.musicTimer);
         this.musicTimer = null;
@@ -184,61 +385,99 @@
 
     _playMusicStep(step, time, stepDur) {
       const bar = Math.floor(step / 8) % 4;
+      // A long, overlapping pad chord swells in under every bar so harmony
+      // never re-attacks abruptly — this alone removes most of the "busy"
+      // feeling from the old pattern.
       if (step % 8 === 0) {
         const chord = PAD_CHORDS[bar];
-        chord.forEach((m, i) => this._pad(midiToFreq(m), time, stepDur * 8.4, 0.055 - i * 0.006));
+        chord.forEach((m, i) => this._pad(midiToFreq(m), time, stepDur * 16.5, 0.038 - i * 0.004));
       }
+      // A slow, breathy flute-like lead with rests baked into the pattern.
       const patIndex = step % MELODY_PATTERN.length;
-      const skip = step % 4 === 3 && (step % 8 !== 7);
-      if (!skip) {
-        const degree = MELODY_PATTERN[patIndex];
+      const degree = MELODY_PATTERN[patIndex];
+      if (degree !== null) {
         const octave = this.musicMode === 'summit' ? 12 : 0;
-        this._pluck(midiToFreq(MELODY_SCALE[degree] + octave), time, stepDur * 1.7, 0.075);
+        this._flute(midiToFreq(MELODY_SCALE[degree] + octave), time, stepDur * 3.4, 0.062);
       }
-      if (step % 8 === 0 || step % 8 === 5) this._soft(time, 0.055); // gentle heartbeat drum
+      // A very sparse music-box sparkle instead of a drum, once every couple
+      // of bars, so the texture stays calm.
+      if (step % 16 === 12) this._sparkle(time, midiToFreq(MELODY_SCALE[6] + 12), 0.05);
     }
 
+    /** Soft sustained pad note: slow fade in, slow fade out, gentle low-pass. */
     _pad(freq, time, dur, gain) {
       const o = this.ctx.createOscillator();
       o.type = 'sine';
       o.frequency.value = freq;
-      const g = this.ctx.createGain();
-      g.gain.setValueAtTime(0.0001, time);
-      g.gain.linearRampToValueAtTime(gain, time + dur * 0.35);
-      g.gain.linearRampToValueAtTime(0.0001, time + dur);
-      o.connect(g).connect(this.musicBus);
-      o.start(time);
-      o.stop(time + dur + 0.05);
-    }
-
-    _pluck(freq, time, dur, gain) {
-      const o = this.ctx.createOscillator();
-      o.type = 'triangle';
-      o.frequency.value = freq;
       const f = this.ctx.createBiquadFilter();
       f.type = 'lowpass';
-      f.frequency.setValueAtTime(3400, time);
-      f.frequency.exponentialRampToValueAtTime(900, time + dur);
+      f.frequency.value = 1100;
       const g = this.ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
-      g.gain.linearRampToValueAtTime(gain, time + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+      g.gain.linearRampToValueAtTime(gain, time + dur * 0.4);
+      g.gain.linearRampToValueAtTime(0.0001, time + dur);
       o.connect(f).connect(g).connect(this.musicBus);
       o.start(time);
       o.stop(time + dur + 0.05);
     }
 
-    _soft(time, gain) {
-      const src = this.ctx.createBufferSource();
-      src.buffer = this.noiseBuffer;
+    /**
+     * Breathy, rounded lead tone (two soft sine layers + a touch of vibrato)
+     * that stands in for a flute/pan-pipe. Feeds the shared echo bus so notes
+     * trail off softly instead of stopping dead.
+     */
+    _flute(freq, time, dur, gain) {
+      const o1 = this.ctx.createOscillator();
+      o1.type = 'sine';
+      o1.frequency.value = freq;
+      const o2 = this.ctx.createOscillator();
+      o2.type = 'sine';
+      o2.frequency.value = freq * 2.005; // a whisper of a soft octave shimmer
+
+      const vibrato = this.ctx.createOscillator();
+      vibrato.frequency.value = 4.2;
+      const vibratoGain = this.ctx.createGain();
+      vibratoGain.gain.value = freq * 0.006;
+      vibrato.connect(vibratoGain).connect(o1.frequency);
+      vibrato.connect(vibratoGain).connect(o2.frequency);
+
       const f = this.ctx.createBiquadFilter();
       f.type = 'lowpass';
-      f.frequency.value = 220;
+      f.frequency.value = 2600;
+
       const g = this.ctx.createGain();
-      g.gain.setValueAtTime(gain, time);
-      g.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
-      src.connect(f).connect(g).connect(this.musicBus);
-      src.start(time, Math.random(), 0.25);
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.linearRampToValueAtTime(gain, time + dur * 0.22);
+      g.gain.linearRampToValueAtTime(gain * 0.7, time + dur * 0.7);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+      const g2 = this.ctx.createGain();
+      g2.gain.value = 0.16; // the shimmer layer stays well under the main tone
+
+      o1.connect(f);
+      o2.connect(g2).connect(f);
+      f.connect(g).connect(this.musicBus);
+      if (this.musicDelay) g.connect(this.musicDelay);
+
+      vibrato.start(time);
+      o1.start(time); o2.start(time);
+      const stopAt = time + dur + 0.08;
+      vibrato.stop(stopAt); o1.stop(stopAt); o2.stop(stopAt);
+    }
+
+    /** A single soft, high, bell-like sparkle — used very sparingly. */
+    _sparkle(time, freq, gain) {
+      const o = this.ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = freq;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.linearRampToValueAtTime(gain, time + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + 1.1);
+      o.connect(g).connect(this.musicBus);
+      if (this.musicDelay) g.connect(this.musicDelay);
+      o.start(time);
+      o.stop(time + 1.2);
     }
 
     // -------------------------------------------------------------- SFX core
@@ -363,11 +602,18 @@
       const seq = [74, 78, 81, 86, 84, 86, 93];
       seq.forEach((m, i) => this._tone({ freq: midiToFreq(m), duration: 0.5, gain: 0.2, type: 'triangle', delay: i * 0.16 }));
       [62, 69, 74].forEach((m) => this._tone({ freq: midiToFreq(m), duration: 2.4, gain: 0.09, type: 'sine' }));
-      global.setTimeout(() => { this.tempo = 104; this.startMusic('summit'); }, 2600);
+      global.setTimeout(() => { this.tempo = 68; this.startMusic('summit'); }, 2600);
     }
 
     dispose() {
-      this.stopMusic();
+      this.musicWanted = false;
+      this._stopSynthMusic();
+      this._stopTrack(true);
+      if (this.musicEl) {
+        this.musicEl.removeAttribute('src');
+        try { this.musicEl.load(); } catch (e) { /* already released */ }
+        this.musicEl = null;
+      }
       this.stopAmbience();
       if (this.ctx && this.ctx.close) this.ctx.close();
       this.ctx = null;

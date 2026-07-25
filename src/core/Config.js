@@ -265,6 +265,26 @@
       musicVolume: 0.3,
       ambienceVolume: 0.28,
       sfxVolume: 0.55,
+
+      /**
+       * ---------------------------------------------------------------
+       * CUSTOM BACKGROUND MUSIC
+       * ---------------------------------------------------------------
+       * Put your own MP3 file at:   assets/audio/background-music.mp3
+       * (keep that exact name, or change the path below to match your file)
+       *
+       * If the file is present it becomes the background music and loops for
+       * the whole game. If it is missing or the browser cannot play it, the
+       * game automatically falls back to the built-in synthesised music, so
+       * nothing ever breaks. Set musicTrack to null to force the synth music.
+       */
+      musicTrack: 'assets/audio/background-music.mp3',
+      /** Loudness of your MP3, 0..1 (this is multiplied by masterVolume). */
+      musicTrackVolume: 0.5,
+      /** Loop the track forever (recommended for background music). */
+      musicTrackLoop: true,
+      /** Seconds used to fade the music in when it starts / out when it stops. */
+      musicFadeSeconds: 1.4,
     },
   };
 
