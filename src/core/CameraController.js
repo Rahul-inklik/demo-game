@@ -28,6 +28,13 @@
       this.cinematic = null;
       this.shake = new THREE.Vector3();
 
+      /**
+       * Smoothed camera-collision distance. Kept as its own state so the
+       * pull-in/push-out can be eased over time instead of snapping, which is
+       * what made the view feel like it was jerkily zooming by itself.
+       */
+      this.collisionDistance = this.cfg.distance;
+
       this._dir = new THREE.Vector3();
       this._tmp = new THREE.Vector3();
       this._sample = new THREE.Vector3();
@@ -39,6 +46,9 @@
       this.pitch = this.cfg.startPitch;
       this.desiredTarget.copy(targetPos);
       this.target.copy(targetPos);
+      // Reset the collision spring so a respawn starts from a clean distance
+      // instead of easing out from wherever the previous frame left it.
+      this.collisionDistance = this.distance;
       this._computeDesiredPosition(this._tmp);
       this.currentPos.copy(this._tmp);
       this.camera.position.copy(this.currentPos);
@@ -56,49 +66,64 @@
       this.targetDistance = clamp(this.targetDistance + zoom, this.cfg.minDistance, this.cfg.maxDistance);
     }
 
-    /** Ideal camera position from yaw/pitch/distance around the current target. */
-    _computeDesiredPosition(out) {
+    /** Camera position at a given orbit distance around the current target. */
+    _positionAt(dist, out) {
       const cosP = Math.cos(this.pitch);
       const ox = Math.sin(this.yaw) * cosP;
       const oz = Math.cos(this.yaw) * cosP;
       const oy = Math.sin(this.pitch);
       out.set(
-        this.target.x - ox * this.distance,
-        this.target.y + oy * this.distance + this.cfg.height * 0.35,
-        this.target.z - oz * this.distance
+        this.target.x - ox * dist,
+        this.target.y + oy * dist + this.cfg.height * 0.35,
+        this.target.z - oz * dist
       );
       return out;
     }
 
+    /** Back-compat helper: ideal position at the current smoothed distance. */
+    _computeDesiredPosition(out) {
+      return this._positionAt(this.distance, out);
+    }
+
     /**
-     * Keep the camera out of the mountain by sampling the walkable surface
-     * analytically along the target→camera ray (cheap, no mesh raycasting).
+     * Largest orbit distance (up to `wanted`) that keeps the camera clear of the
+     * mountain, sampled analytically along the target→camera ray.
+     *
+     * The hit point is found by *interpolating* where clearance crosses zero
+     * rather than snapping to a sample index, so the result changes smoothly as
+     * the player moves. That continuity is what removes the zoom judder.
      */
-    _resolveCollision(desired, world) {
-      if (!world || !world.surfaceHeightAt) return desired;
-      this._dir.copy(desired).sub(this.target);
-      const dist = this._dir.length();
-      if (dist < 0.001) return desired;
-      this._dir.multiplyScalar(1 / dist);
+    _maxClearDistance(world, wanted) {
+      if (!world || !world.surfaceHeightAt) return wanted;
 
       const pad = this.cfg.collisionPad;
-      const steps = 8;
-      let allowed = dist;
-      for (let i = 1; i <= steps; i++) {
-        const d = (dist * i) / steps;
-        this._sample.copy(this.target).addScaledVector(this._dir, d);
-        const ground = world.surfaceHeightAt(this._sample.x, this._sample.z).y;
-        if (this._sample.y < ground + pad) {
-          allowed = Math.max(this.cfg.minDistance * 0.4, d - (dist / steps));
-          break;
-        }
-      }
-      if (allowed < dist) desired.copy(this.target).addScaledVector(this._dir, allowed);
+      const minD = Math.max(0.6, this.cfg.minDistance * 0.45);
 
-      // Final safety: never let the camera sink below the surface.
-      const gy = world.surfaceHeightAt(desired.x, desired.z).y;
-      if (desired.y < gy + pad * 0.6) desired.y = gy + pad * 0.6;
-      return desired;
+      // Clearance of the camera above the ground at orbit distance d.
+      const clearanceAt = (d) => {
+        this._positionAt(d, this._sample);
+        const ground = world.surfaceHeightAt(this._sample.x, this._sample.z).y;
+        return this._sample.y - (ground + pad);
+      };
+
+      // If even the closest allowed position is buried, just use it.
+      let prevD = minD;
+      let prevC = clearanceAt(prevD);
+      if (prevC < 0) return minD;
+
+      const steps = 14;
+      for (let i = 1; i <= steps; i++) {
+        const d = minD + ((wanted - minD) * i) / steps;
+        const c = clearanceAt(d);
+        if (c < 0) {
+          // Linear interpolation of the zero crossing between prevD and d.
+          const t = prevC / (prevC - c);
+          return clamp(prevD + (d - prevD) * t, minD, wanted);
+        }
+        prevD = d;
+        prevC = c;
+      }
+      return wanted;
     }
 
     update(dt, headPos, world, shakeOffset) {
@@ -112,10 +137,19 @@
       this.target.y = damp(this.target.y, this.desiredTarget.y, 0.0008, dt);
       this.target.z = damp(this.target.z, this.desiredTarget.z, 0.001, dt);
 
+      // Player-requested zoom (wheel / pinch).
       this.distance = approach(this.distance, this.targetDistance, 8, dt);
 
-      this._computeDesiredPosition(this._tmp);
-      this._resolveCollision(this._tmp, world);
+      // Collision distance, smoothed asymmetrically: snap inward quickly so the
+      // camera never clips through a slope, but drift back out gently so the
+      // view does not appear to zoom on its own every time terrain passes by.
+      const clear = this._maxClearDistance(world, this.distance);
+      const inward = clear < this.collisionDistance;
+      const rateD = inward ? this.cfg.collisionInRate : this.cfg.collisionOutRate;
+      this.collisionDistance = approach(this.collisionDistance, clear, rateD, dt);
+
+      const useDist = Math.min(this.collisionDistance, this.distance);
+      this._positionAt(useDist, this._tmp);
 
       const rate = this.cfg.followRate;
       this.currentPos.x = approach(this.currentPos.x, this._tmp.x, rate, dt);

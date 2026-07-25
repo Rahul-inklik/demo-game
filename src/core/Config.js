@@ -50,7 +50,8 @@
     Palette,
 
     render: {
-      fov: 62,
+      // A tighter lens than a wide "map view": keeps the character prominent.
+      fov: 55,
       near: 0.4,
       far: 900,
       maxPixelRatio: 1.9,
@@ -81,19 +82,26 @@
     },
 
     camera: {
-      distance: 9.5,
-      minDistance: 4.5,
-      maxDistance: 17,
-      zoomStep: 1.1,
-      height: 2.5,
+      // Closer, tighter third-person framing so the hero reads clearly on
+      // screen (roughly a fifth of the screen height) instead of looking tiny.
+      distance: 7.2,
+      minDistance: 3.4,
+      maxDistance: 13,
+      zoomStep: 0.9,
+      height: 2.0,
       minPitch: -0.42,
       maxPitch: 1.15,
       startPitch: 0.26,
       sensitivity: 0.0026,
       dragSensitivity: 0.005,
+      touchSensitivity: 0.0062,
       followRate: 9,
       lookRate: 12,
-      collisionPad: 2.0,
+      collisionPad: 1.5,
+      /** Snap in fast when terrain blocks the view... */
+      collisionInRate: 16,
+      /** ...but ease back out slowly so it never looks like a self-zoom. */
+      collisionOutRate: 2.2,
     },
 
     gameplay: {

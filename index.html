@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>The Flag Warrior – Kids' Tiranga Quest</title>
 <meta name="description" content="A bright, family-friendly 3D educational adventure: climb the Himalayas and plant the Indian National Flag at the summit." />
+<meta name="theme-color" content="#2b6ea8" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="stylesheet" href="styles/main.css" />
 </head>
 <body>
@@ -49,7 +53,7 @@
 
       <div class="controls-card">
         <h3>Controls</h3>
-        <ul class="controls-grid">
+        <ul class="controls-grid" id="controls-keys">
           <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>or Arrows — Move</span></li>
           <li><kbd>Shift</kbd> <span>Run</span></li>
           <li><kbd>Space</kbd> <span>Jump</span></li>
@@ -58,6 +62,16 @@
           <li><kbd>Wheel</kbd> <span>Zoom</span></li>
           <li><kbd>P</kbd> <span>Pause menu</span></li>
           <li><kbd>1</kbd>–<kbd>4</kbd> <span>Answer the quiz</span></li>
+        </ul>
+        <ul class="controls-grid" id="controls-touch" hidden>
+          <li><b class="tc">◉</b> <span>Left thumbstick — Move</span></li>
+          <li><b class="tc">»</b> <span>Push the stick far to Run</span></li>
+          <li><b class="tc">Run</b> <span>Tap to keep running</span></li>
+          <li><b class="tc">Jump</b> <span>Tap to jump</span></li>
+          <li><b class="tc">E</b> <span>Tap to interact</span></li>
+          <li><b class="tc">✥</b> <span>Drag the right side to look</span></li>
+          <li><b class="tc">⇔</b> <span>Pinch to zoom</span></li>
+          <li><b class="tc">⏸</b> <span>Pause, top right</span></li>
         </ul>
       </div>
       <p class="credits">An original educational adventure • Score, lives, checkpoints and a friendly Yeti await.</p>
@@ -156,6 +170,15 @@
     </div>
   </div>
 
+  <!-- ===== Portrait nudge (touch devices only) ===== -->
+  <div id="rotate-hint" class="rotate-hint">
+    <div class="rotate-card">
+      <div class="rotate-icon">📱↻</div>
+      <h2>Turn your device sideways</h2>
+      <p>The mountain looks much better in landscape.</p>
+    </div>
+  </div>
+
   <div id="fade" class="fade"></div>
   <div id="flash" class="flash"></div>
   <div id="vignette" class="vignette"></div>
@@ -166,12 +189,14 @@
   <!-- ===== Game modules (classic scripts: playable directly from file://) ===== -->
   <script src="src/core/Utils.js"></script>
   <script src="src/core/Config.js"></script>
+  <script src="src/core/DeviceProfile.js"></script>
   <script src="src/core/AssetLoader.js"></script>
   <script src="src/core/Input.js"></script>
   <script src="src/systems/Audio.js"></script>
   <script src="src/systems/Effects.js"></script>
   <script src="src/systems/Quiz.js"></script>
   <script src="src/ui/UI.js"></script>
+  <script src="src/ui/TouchControls.js"></script>
   <script src="src/core/CameraController.js"></script>
   <script src="src/world/Terrain.js"></script>
   <script src="src/world/Environment.js"></script>

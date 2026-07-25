@@ -176,12 +176,16 @@
       this.scene = scene;
       this.assets = assets;
 
+      // Particle budgets scale with the device tier (see DeviceProfile).
+      const q = TFW.Config.quality || {};
+      this.quality = q;
+
       const particleTex = assets.get('particle');
-      this.sparks = new ParticlePool(900, particleTex, true);
-      this.puffs = new ParticlePool(700, particleTex, false);
+      this.sparks = new ParticlePool(q.sparkParticles || 900, particleTex, true);
+      this.puffs = new ParticlePool(q.puffParticles || 700, particleTex, false);
       scene.add(this.sparks.points, this.puffs.points);
 
-      this.footprints = this._createFootprints(assets.get('footprint'), 30);
+      this.footprints = this._createFootprints(assets.get('footprint'), q.footprints || 30);
       this.footprints.forEach((f) => scene.add(f.mesh));
       this.footprintIndex = 0;
 
@@ -383,9 +387,10 @@
         color: 0xfff6cf, life: 0.85, size0: 0.7, size1: 0.4, gravity: 3.4, drag: 0.99,
       });
       const burstPos = start.clone().add(new THREE.Vector3(0, rise * 0.7, 0));
+      const shellCount = this.quality.fireworkShellParticles || 70;
       const timer = global.setTimeout(() => {
         const c = color || TFW.Config.Palette.saffron;
-        for (let i = 0; i < 70; i++) {
+        for (let i = 0; i < shellCount; i++) {
           const dir = new THREE.Vector3(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
           const speed = randRange(5, 13);
           this.sparks.spawn({
@@ -403,7 +408,8 @@
     celebrate(position) {
       const p = TFW.Config.Palette;
       const colors = [p.saffron, 0xffffff, p.green, p.checkpointOn, 0x8fdcf8];
-      for (let i = 0; i < 90; i++) {
+      const confetti = this.quality.celebrateParticles || 90;
+      for (let i = 0; i < confetti; i++) {
         const a = Math.random() * Math.PI * 2;
         const r = randRange(0, 6);
         const pos = new THREE.Vector3(position.x + Math.cos(a) * r, position.y + randRange(4, 12), position.z + Math.sin(a) * r);

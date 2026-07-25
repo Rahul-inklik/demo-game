@@ -41,8 +41,39 @@
       this.onPauseRequested = null;
       this.onPointerLockLost = null;
 
+      // External (touch) intents, merged with the keyboard each frame.
+      this.external = { x: 0, y: 0, magnitude: 0, run: false };
+      /** When true, mouse drag/wheel look is ignored (touch drives the camera). */
+      this.pointerLookEnabled = true;
+
       this._bind();
     }
+
+    // -------------------------------------------------- external (touch) API
+
+    /** Set the analogue move intent from a virtual thumbstick. */
+    setExternalMove(x, y, magnitude) {
+      this.external.x = x || 0;
+      this.external.y = y || 0;
+      this.external.magnitude = magnitude || 0;
+    }
+
+    setExternalRun(run) { this.external.run = !!run; }
+
+    /** Buffered jump press from an on-screen button. */
+    pressJump() { this.jumpBuffered = TFW.Config.player.jumpBuffer; }
+
+    /** One-shot interact press from an on-screen button. */
+    pressInteract() { this.interactPressed = true; }
+
+    /** Accumulate a camera look delta (radians) from a touch drag. */
+    addLook(x, y) {
+      this.look.x += x || 0;
+      this.look.y += y || 0;
+    }
+
+    /** Accumulate a zoom delta from a pinch gesture. */
+    addZoom(z) { this.zoom += z || 0; }
 
     // ------------------------------------------------------------ public API
 
@@ -63,6 +94,9 @@
       this.look.x = this.look.y = 0;
       this.zoom = 0;
       this.dragging = false;
+      this.external.x = this.external.y = 0;
+      this.external.magnitude = 0;
+      this.external.run = false;
     }
 
     /** Normalised movement intent in screen space (x = strafe, y = forward). */
@@ -70,11 +104,19 @@
       const x = (this.state.right ? 1 : 0) - (this.state.left ? 1 : 0);
       const y = (this.state.up ? 1 : 0) - (this.state.down ? 1 : 0);
       const len = Math.hypot(x, y);
-      if (len < 0.0001) return { x: 0, y: 0, magnitude: 0 };
-      return { x: x / len, y: y / len, magnitude: clamp(len, 0, 1) };
+      if (len > 0.0001) {
+        return { x: x / len, y: y / len, magnitude: clamp(len, 0, 1) };
+      }
+      // Fall back to the on-screen thumbstick when no key is held.
+      const e = this.external;
+      const elen = Math.hypot(e.x, e.y);
+      if (elen > 0.0001) {
+        return { x: e.x / elen, y: e.y / elen, magnitude: clamp(e.magnitude, 0, 1) };
+      }
+      return { x: 0, y: 0, magnitude: 0 };
     }
 
-    get isRunning() { return this.state.run; }
+    get isRunning() { return this.state.run || this.external.run; }
 
     /** Returns true once per jump press (buffered so early presses still count). */
     consumeJump() {
@@ -112,6 +154,7 @@
     }
 
     requestPointerLock() {
+      if (!this.pointerLookEnabled) return;
       if (!this.canvas.requestPointerLock || this.pointerLocked) return;
       const p = this.canvas.requestPointerLock();
       if (p && typeof p.catch === 'function') p.catch(() => { /* user gesture required; drag-look still works */ });
@@ -154,7 +197,7 @@
       this._onBlur = () => this.reset();
 
       this._onMouseDown = (e) => {
-        if (!this.enabled || e.button !== 0) return;
+        if (!this.enabled || e.button !== 0 || !this.pointerLookEnabled) return;
         this.dragging = true;
         this.requestPointerLock();
       };
@@ -162,7 +205,7 @@
       this._onMouseUp = () => { this.dragging = false; };
 
       this._onMouseMove = (e) => {
-        if (!this.enabled) return;
+        if (!this.enabled || !this.pointerLookEnabled) return;
         const s = TFW.Config.camera;
         if (this.pointerLocked) {
           this.look.x += e.movementX * s.sensitivity;

@@ -61,8 +61,17 @@
       return;
     }
 
+    // Detect the device and pick quality budgets BEFORE the world is built.
+    if (!TFW.DeviceProfile) {
+      fail(ui, 'A game module (DeviceProfile.js) is missing. Please check the "src" folder and reload.');
+      return;
+    }
+    TFW.DeviceProfile.detect();
+    TFW.DeviceProfile.apply(TFW.Config);
+    ui.applyDeviceProfile(TFW.DeviceProfile);
+
     ui.showLoading();
-    ui.setProgress(0.02, 'Warming up the engine');
+    ui.setProgress(0.02, TFW.DeviceProfile.isMobile ? 'Warming up (mobile mode)' : 'Warming up the engine');
 
     let assets;
     try {

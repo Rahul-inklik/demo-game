@@ -45,6 +45,17 @@
       this.input = new TFW.Input(this.canvas);
       this.audio = new TFW.AudioSystem();
 
+      // On touch devices the on-screen pad drives the camera, so disable the
+      // mouse-drag / pointer-lock path to keep the two from fighting.
+      const q = this.config.quality || {};
+      this.touch = null;
+      if (q.hasTouch && TFW.TouchControls) {
+        this.input.pointerLookEnabled = false;
+        this.touch = new TFW.TouchControls(global.document.body, this.input, {
+          onPause: () => this.togglePause(),
+        });
+      }
+
       this._wirePlayer();
       this._wireInput();
 
@@ -73,7 +84,18 @@
       this.player.group.visible = true;
 
       this._onResize();
-      global.addEventListener('resize', () => this._onResize());
+      this._resizeHandler = () => this._onResize();
+      global.addEventListener('resize', this._resizeHandler);
+      global.addEventListener('orientationchange', this._resizeHandler);
+      if (global.visualViewport) {
+        global.visualViewport.addEventListener('resize', this._resizeHandler);
+        global.visualViewport.addEventListener('scroll', this._resizeHandler);
+      }
+      // Mobile browsers suspend audio when the tab is backgrounded; pause the
+      // run so players don't come back to a dead timer or a lost life.
+      global.document.addEventListener('visibilitychange', () => {
+        if (global.document.hidden && this.mode === 'running' && !this.paused) this.togglePause();
+      });
 
       this.mode = 'title';
       this._lastTime = performance.now();
@@ -82,21 +104,40 @@
     }
 
     _initRenderer() {
-      const gl = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
+      const q = this.config.quality || {};
+      const gl = new THREE.WebGLRenderer({
+        canvas: this.canvas,
+        antialias: q.antialias !== false,
+        powerPreference: q.isMobile ? 'default' : 'high-performance',
+      });
       gl.setPixelRatio(Math.min(global.devicePixelRatio || 1, this.config.render.maxPixelRatio));
-      gl.setSize(global.innerWidth, global.innerHeight, false);
-      gl.shadowMap.enabled = true;
-      gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      const size = this._viewportSize();
+      gl.setSize(size.w, size.h, false);
+      gl.shadowMap.enabled = q.shadows !== false;
+      // A cheaper shadow filter on phones; soft PCF everywhere else.
+      gl.shadowMap.type = q.isMobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
       gl.outputColorSpace = THREE.SRGBColorSpace;
       gl.toneMapping = THREE.ACESFilmicToneMapping;
       gl.toneMappingExposure = this.config.render.exposure;
       this.renderer = gl;
     }
 
+    /**
+     * Visible viewport size. On mobile browsers the URL bar shows/hides, so
+     * visualViewport (when present) is more reliable than innerWidth/Height.
+     */
+    _viewportSize() {
+      const vv = global.visualViewport;
+      const w = Math.max(1, Math.round((vv && vv.width) || global.innerWidth || 1));
+      const h = Math.max(1, Math.round((vv && vv.height) || global.innerHeight || 1));
+      return { w, h };
+    }
+
     _initScene() {
       this.scene = new THREE.Scene();
       const r = this.config.render;
-      this.camera = new THREE.PerspectiveCamera(r.fov, global.innerWidth / global.innerHeight, r.near, r.far);
+      const size = this._viewportSize();
+      this.camera = new THREE.PerspectiveCamera(r.fov, size.w / size.h, r.near, r.far);
       this.camera.position.set(0, 6, -20);
     }
 
@@ -143,6 +184,7 @@
       this.mode = 'running';
       this.paused = false;
       this._lastTime = performance.now();
+      this._syncTouch();
     }
 
     restart() {
@@ -164,6 +206,8 @@
       this.mode = 'running';
       this.paused = false;
       this._lastTime = performance.now();
+      if (this.touch) this.touch.reset();
+      this._syncTouch();
     }
 
     returnToTitle() {
@@ -180,6 +224,8 @@
       this.player.group.visible = true;
       this.ui.showTitle();
       this.mode = 'title';
+      if (this.touch) this.touch.reset();
+      this._syncTouch();
     }
 
     togglePause() {
@@ -197,12 +243,28 @@
         this.audio.setDucked(this.gameManager.signOpen || this.gameManager.state === TFW.GameManager.STATE.QUIZ);
         this._lastTime = performance.now();
       }
+      this._syncTouch();
     }
 
     resume() { if (this.paused) this.togglePause(); }
 
-    _onVictory() { this.input.exitPointerLock(); }
-    _onGameOver() { this.input.exitPointerLock(); }
+    /**
+     * Show the touch pad only while the player actually has control: hidden on
+     * the title/pause/quiz/victory screens so it never covers a dialog.
+     */
+    _syncTouch() {
+      if (!this.touch) return;
+      const gm = this.gameManager;
+      const playable =
+        this.mode === 'running' &&
+        !this.paused &&
+        !!gm &&
+        gm.canControlPlayer;
+      this.touch.setEnabled(playable);
+    }
+
+    _onVictory() { this.input.exitPointerLock(); this._syncTouch(); }
+    _onGameOver() { this.input.exitPointerLock(); this._syncTouch(); }
 
     // ------------------------------------------------------------ loop
 
@@ -263,6 +325,13 @@
       }
 
       gm.update(dt);
+
+      // Keep the touch pad in step with gameplay state (the quiz, signs and the
+      // ending cinematic all take control away mid-frame).
+      if (this.touch) {
+        this._syncTouch();
+        this.touch.setInteractAvailable(!!gm._activeInteract);
+      }
     }
 
     _updateTitle(dt) {
@@ -280,14 +349,33 @@
     }
 
     _onResize() {
-      const w = global.innerWidth;
-      const h = global.innerHeight;
+      const { w, h } = this._viewportSize();
+      // Re-clamp the pixel ratio: some devices report a different DPR after an
+      // orientation change or when moved to another display.
+      this.renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, this.config.render.maxPixelRatio));
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / h;
+
+      // Portrait phones see a lot less horizontally; widen the FOV a little so
+      // the trail ahead stays readable instead of feeling cropped.
+      const q = this.config.quality || {};
+      if (q.isMobile) {
+        this.camera.fov = h > w ? 68 : 60;
+      }
       this.camera.updateProjectionMatrix();
+      if (this.ui && this.ui.setOrientation) this.ui.setOrientation(h > w);
     }
 
     dispose() {
+      if (this._resizeHandler) {
+        global.removeEventListener('resize', this._resizeHandler);
+        global.removeEventListener('orientationchange', this._resizeHandler);
+        if (global.visualViewport) {
+          global.visualViewport.removeEventListener('resize', this._resizeHandler);
+          global.visualViewport.removeEventListener('scroll', this._resizeHandler);
+        }
+      }
+      if (this.touch) this.touch.dispose();
       this.gameManager.dispose();
       this.input.dispose();
       this.audio.dispose();

@@ -27,6 +27,10 @@
       this.birds = [];            // gliding birds in the sky
       this.twinklers = [];        // ice crystals that shimmer
 
+      // Population budgets come from the device tier (see DeviceProfile).
+      this.q = config.quality || {};
+      this.decor = this.q.decorScale === undefined ? 1 : this.q.decorScale;
+
       this.terrain = new TFW.Terrain(scene, assets, config);
       this.collisionMeshes.push(this.terrain.mesh);
 
@@ -303,9 +307,10 @@
 
     _buildForest() {
       // Dense band of pines flanking the trail through the lower/mid mountain.
+      const target = this.q.trees || 200;
       let placed = 0;
       let attempts = 0;
-      while (placed < 200 && attempts < 4000) {
+      while (placed < target && attempts < target * 20) {
         attempts++;
         const z = randRange(-150, 210);
         const centerX = this.terrain.trailCenterX(z);
@@ -331,9 +336,10 @@
       const snowMat = new THREE.MeshStandardMaterial({ color: p.snowLight, roughness: 0.95 });
       const geo = new THREE.DodecahedronGeometry(1, 0);
 
+      const target = this.q.rocks || 85;
       let placed = 0;
       let attempts = 0;
-      while (placed < 85 && attempts < 2000) {
+      while (placed < target && attempts < target * 24) {
         attempts++;
         const z = randRange(-140, 330);
         const centerX = this.terrain.trailCenterX(z);
@@ -381,9 +387,11 @@
         { count: 14, rMin: 230, rMax: 300, hMin: 70, hMax: 150, base: -8 },
         { count: 10, rMin: 320, rMax: 400, hMin: 110, hMax: 210, base: -20 },
       ];
+      const peakScale = this.q.distantPeaks === undefined ? 1 : this.q.distantPeaks;
       rings.forEach((ring) => {
-        for (let i = 0; i < ring.count; i++) {
-          const a = (i / ring.count) * Math.PI * 2 + this.rng() * 0.3;
+        const total = Math.max(5, Math.round(ring.count * peakScale));
+        for (let i = 0; i < total; i++) {
+          const a = (i / total) * Math.PI * 2 + this.rng() * 0.3;
           const rad = randRange(ring.rMin, ring.rMax);
           const x = cx + Math.cos(a) * rad;
           const z = cz + Math.sin(a) * rad;
@@ -450,8 +458,12 @@
         return null;
       };
 
+      // Decoration counts scale with the device tier (keep at least a few so
+      // the trail still reads the same on a phone).
+      const n = (full) => Math.max(2, Math.round(full * this.decor));
+
       // Cairns (stacked-stone trail markers) along the whole climb.
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < n(12); i++) {
         const s = spot(-120, 300, 1.5, 6);
         if (!s) continue;
         const cairn = new THREE.Group();
@@ -476,7 +488,7 @@
       }
 
       // Rounded snow mounds.
-      for (let i = 0; i < 44; i++) {
+      for (let i = 0; i < n(44); i++) {
         const s = spot(-130, 320, 0, 20);
         if (!s) continue;
         const r = randRange(0.8, 2.6);
@@ -488,7 +500,7 @@
       }
 
       // Frozen bushes.
-      for (let i = 0; i < 34; i++) {
+      for (let i = 0; i < n(34); i++) {
         const s = spot(-140, 210, 1, 22);
         if (!s) continue;
         const bush = new THREE.Group();
@@ -507,7 +519,7 @@
       }
 
       // Sparkling ice crystals, denser near the ice field.
-      for (let i = 0; i < 34; i++) {
+      for (let i = 0; i < n(34); i++) {
         const nearIce = this.rng() > 0.5;
         const s = nearIce ? spot(210, 300, 0, 16) : spot(60, 320, 1, 22);
         if (!s) continue;
@@ -527,7 +539,7 @@
       }
 
       // Rope safety fences along the exposed high ridge.
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < n(9); i++) {
         const s = spot(150, 300, 0.5, 3);
         if (!s) continue;
         const fence = new THREE.Group();
@@ -552,7 +564,8 @@
     _buildBirds() {
       const birdMat = new THREE.MeshStandardMaterial({ color: 0x394452, roughness: 0.8 });
       const wingGeo = new THREE.BoxGeometry(1.2, 0.06, 0.4);
-      for (let i = 0; i < 6; i++) {
+      const birdCount = this.q.birds === undefined ? 6 : this.q.birds;
+      for (let i = 0; i < birdCount; i++) {
         const bird = new THREE.Group();
         const wingL = new THREE.Mesh(wingGeo, birdMat);
         wingL.position.x = -0.6;

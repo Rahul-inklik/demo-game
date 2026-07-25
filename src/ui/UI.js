@@ -119,6 +119,37 @@
       this.btnTitleOver.addEventListener('click', () => { clickSound(); if (c.onReturnTitle) c.onReturnTitle(); });
     }
 
+    // -------------------------------------------------------- device / layout
+
+    /**
+     * Tag the document so the stylesheet can switch to the compact, touch-first
+     * layout, and swap the desktop control hints for touch instructions.
+     */
+    applyDeviceProfile(profile) {
+      const root = this.d.documentElement;
+      root.classList.toggle('is-touch', !!profile.hasTouch);
+      root.classList.toggle('is-mobile', !!profile.isMobile);
+      root.classList.toggle('is-desktop', !profile.isMobile);
+      root.setAttribute('data-quality', profile.tierName);
+
+      const touchHelp = this.d.getElementById('controls-touch');
+      const keyHelp = this.d.getElementById('controls-keys');
+      if (touchHelp) touchHelp.hidden = !profile.hasTouch;
+      if (keyHelp) keyHelp.hidden = !!profile.isMobile;
+
+      // The quiz hint about number keys is meaningless without a keyboard.
+      const quizHint = this.d.querySelector('.quiz-hint');
+      if (quizHint) quizHint.textContent = profile.isMobile ? 'Tap an answer' : 'Tip: press 1–4 to answer';
+
+      const pauseBtn = this.btnPause;
+      if (pauseBtn && profile.isMobile) pauseBtn.textContent = '⏸';
+    }
+
+    /** Show a gentle "turn your phone" nudge in portrait on small screens. */
+    setOrientation(isPortrait) {
+      this.d.documentElement.classList.toggle('is-portrait', !!isPortrait);
+    }
+
     // -------------------------------------------------------- screen helpers
 
     _show(el) { el.classList.add('show'); }

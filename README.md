@@ -33,7 +33,23 @@ Then visit `http://localhost:8000` and press **▶ Play**.
 > The first screen builds all the artwork with a progress bar, then shows the
 > title screen.
 
-### Controls
+### Controls — touch (phones & tablets)
+On-screen controls appear **only on touch devices**:
+
+| Action | Touch |
+| --- | --- |
+| Move | Left **thumbstick** (anchors wherever your thumb lands) |
+| Run | Push the stick to the ring edge, or tap **Run** to keep running |
+| Jump | **Jump** button |
+| Interact / read signs / plant flag | **E** button (glows green when something is in range) |
+| Rotate camera | Drag anywhere on the **right** half |
+| Zoom | **Pinch** |
+| Answer the quiz | Tap an answer |
+| Pause | **⏸** top right |
+
+Landscape is recommended — a gentle "turn your device" nudge appears in portrait.
+
+### Controls — desktop
 | Action | Keys |
 | --- | --- |
 | Move | **W A S D** or **Arrow keys** |
@@ -64,7 +80,9 @@ systems. The following modules were added to complete a fully playable game:
 
 | Module | Responsibility |
 | --- | --- |
-| `src/ui/UI.js` | Owns every DOM screen/HUD/overlay: title, loading, error, HUD, toasts, subtitles, sign popup, quiz modal, pause, victory, game‑over, fades. Turns clicks/keys into callbacks. |
+| `src/ui/UI.js` | Owns every DOM screen/HUD/overlay: title, loading, error, HUD, toasts, subtitles, sign popup, quiz modal, pause, victory, game‑over, fades. Turns clicks/keys into callbacks, and switches the layout/help text for touch devices. |
+| `src/core/DeviceProfile.js` | Detects touch support and device class at boot, then picks a **quality tier** (low / medium / high) and writes the budgets into `Config.quality` **before** the world is built — pixel ratio, shadow map size, terrain resolution, tree/rock/bird/decor counts, snow and particle pools, fog distance and character LOD distance. Also honours `prefers-reduced-motion` and `saveData`. |
+| `src/ui/TouchControls.js` | The on-screen pad, mounted **only on touch devices**: an anchoring virtual thumbstick (push to the edge to run), Jump / Interact / Run buttons, right-half drag to orbit the camera and pinch to zoom. Feeds the same intent API the keyboard uses, so no gameplay code branches on input type. |
 | `src/core/CameraController.js` | Smooth, damped third‑person orbit camera with mouse look, zoom, **analytic terrain collision** (no expensive raycasts) and a summit **cinematic** mode. |
 | `src/world/Terrain.js` | The procedural snow mountain. Fully **analytic height field** (`heightAt`) built from an elevation spine, trail curve, corridor widths, flat pads and carved chasms — so what you see is exactly what you walk on. |
 | `src/world/Environment.js` | HDR‑style gradient **sky** dome + sun glow, warm key light with **dynamic shadows**, hemisphere/ambient fill, **fog**, a player‑following **snow field**, drifting **clouds**, and a soft PMREM environment map. |
@@ -95,6 +113,11 @@ systems. The following modules were added to complete a fully playable game:
   smooth fade/flash transitions.
 - Fully synthesised audio: gentle background music, wind ambience that grows
   with altitude, footsteps, quiz/flag/UI sounds and a victory fanfare.
+- **Mobile support** from a single `index.html`: touch controls that appear only
+  on touch devices, a responsive HUD/quiz/menu layout (including short landscape
+  phones and notch-safe insets), automatic quality tiers, `visualViewport`-aware
+  resizing for the mobile URL bar, FOV widening in portrait, and auto-pause when
+  the tab is backgrounded.
 
 ### How it was verified
 - **Syntax‑checked** every JavaScript module with `node --check`.
@@ -123,7 +146,8 @@ web game new/
    │  ├─ Utils.js                # math/helpers (noise, curves, damping, timing)
    │  ├─ Config.js               # ALL tuning, palette and level/quiz content
    │  ├─ AssetLoader.js          # procedural textures (flag, snow, rock, wood, ice…)
-   │  ├─ Input.js                # keyboard + mouse intent
+   │  ├─ Input.js                # keyboard + mouse + touch intent
+   │  ├─ DeviceProfile.js        # device detection + quality tiers
    │  ├─ CameraController.js     # third-person + cinematic camera
    │  ├─ GameManager.js          # gameplay rules & flow
    │  └─ Game.js                 # orchestrator + render loop
@@ -143,7 +167,8 @@ web game new/
    │  ├─ Checkpoint.js           # banner gates
    │  └─ Signboard.js            # educational signs
    └─ ui/
-      └─ UI.js                   # all DOM screens/HUD/overlays
+      ├─ UI.js                   # all DOM screens/HUD/overlays
+      └─ TouchControls.js        # on-screen pad (touch devices only)
 ```
 
 ## Tuning & extending

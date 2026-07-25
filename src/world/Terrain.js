@@ -27,8 +27,11 @@
       this.maxX = 180;
       this.minZ = -160;
       this.maxZ = 470;
-      this.segX = 220;
-      this.segZ = 320;
+      // Mesh resolution follows the device tier; the analytic height field that
+      // gameplay samples is unchanged, so collision stays identical everywhere.
+      const q = config.quality || {};
+      this.segX = q.terrainSegX || 220;
+      this.segZ = q.terrainSegZ || 320;
 
       this.mesh = this._build(assets);
       scene.add(this.mesh);

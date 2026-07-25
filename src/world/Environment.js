@@ -162,7 +162,8 @@
     _buildClouds() {
       this.clouds = new THREE.Group();
       const mapTex = this.assets.get('cloud');
-      for (let i = 0; i < 14; i++) {
+      const count = (this.cfg.quality && this.cfg.quality.clouds) || 14;
+      for (let i = 0; i < count; i++) {
         const mat = new THREE.SpriteMaterial({
           map: mapTex,
           transparent: true,
@@ -181,7 +182,7 @@
     }
 
     _buildSnow() {
-      const count = 1400;
+      const count = (this.cfg.quality && this.cfg.quality.snowCount) || 1400;
       this.snowCount = count;
       this.snowBox = { w: 120, h: 70, d: 120 };
       const positions = new Float32Array(count * 3);

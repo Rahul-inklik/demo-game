@@ -87,6 +87,10 @@
       // Smoothed morph weights, one slot per morph target.
       this._morph = new Float32Array(this.character.morphNames.length);
 
+      // Camera look-at height, derived from the built character rather than
+      // hard-coded, so changing Config.player.height keeps the framing correct.
+      this._eyeHeight = this.character.headHeight || 1.6;
+
       this._initRestPose();
       this._attachFlag(assets);
 
@@ -126,10 +130,12 @@
 
     _attachFlag(assets) {
       // The Tiranga is carried in the right hand, parented to the hand bone so
-      // it follows the skinned arm exactly.
+      // it follows the skinned arm exactly. Bone local space is unscaled, so the
+      // flag carries the character scale itself.
+      const S = this.character.scale || 1;
       this.flag = new TFW.Flag(assets, { poleHeight: 2.3, clothWidth: 1.4, clothHeight: 0.9, withPole: true });
-      this.flag.group.scale.setScalar(0.72);
-      this.flag.group.position.set(0.0, -0.10, 0.03);
+      this.flag.group.scale.setScalar(0.72 * S);
+      this.flag.group.position.set(0.0, -0.10 * S, 0.03 * S);
       this.flag.group.rotation.set(0.10, 0, -0.16);
       this.bones.handR.add(this.flag.group);
     }
@@ -164,7 +170,7 @@
 
     getHeadPosition(out) {
       const t = out || this._tmpTarget;
-      t.set(this.position.x, this.position.y + 1.30, this.position.z);
+      t.set(this.position.x, this.position.y + this._eyeHeight, this.position.z);
       return t;
     }
 

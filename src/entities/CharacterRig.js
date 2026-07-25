@@ -66,6 +66,14 @@
   const HEAD = { cx: 0, cy: 1.275, cz: 0, r: 0.118 };
 
   /**
+   * Height of the character as authored in "model units" (the RIG table and all
+   * the geometry below are written at this size). The whole character is then
+   * uniformly scaled to Config.player.height so the boy reads at the right size
+   * next to the level's props, which are built for that height.
+   */
+  const MODEL_HEIGHT = 1.40;
+
+  /**
    * Accumulates vertices/triangles for a single merged, skinned geometry.
    * Triangles are bucketed per material so the final geometry gets one group
    * per material slot (a handful of draw calls for the whole character).
@@ -226,7 +234,7 @@
     }
   }
 
-  TFW.CharacterRig = { MAT, RIG, HEAD, MeshBuilder };
+  TFW.CharacterRig = { MAT, RIG, HEAD, MODEL_HEIGHT, MeshBuilder };
 })(window);
 
 /* ===================================================================== *
@@ -742,7 +750,12 @@
   const TFW = global.TFW;
   const U = TFW.Utils;
   const CR = TFW.CharacterRig;
-  const { MAT, RIG, HEAD, CharacterBuilder } = CR;
+  const { MAT, RIG, HEAD, MODEL_HEIGHT, CharacterBuilder } = CR;
+
+  /** Multiply every value in a float array in place (uniform scale). */
+  function scaleArray(arr, s) {
+    for (let i = 0; i < arr.length; i++) arr[i] *= s;
+  }
 
   /** Facial morph target order. Index 0..N-1 maps to morphTargetInfluences. */
   const MORPHS = ['happy', 'excited', 'curious', 'proud', 'celebrate'];
@@ -916,6 +929,11 @@
   function createCharacter(assets) {
     if (!assets) throw new Error('CharacterRig: an AssetLoader is required.');
 
+    // Uniform scale from authored model units up to the gameplay height, so the
+    // character matches the scale the level props were built for.
+    const targetHeight = (TFW.Config && TFW.Config.player && TFW.Config.player.height) || MODEL_HEIGHT;
+    const S = targetHeight / MODEL_HEIGHT;
+
     // ---- bones ----------------------------------------------------------
     const bones = {};
     const boneList = [];
@@ -928,10 +946,12 @@
         const p = bones[parent];
         if (!p) throw new Error('CharacterRig: bone "' + name + '" references missing parent "' + parent + '".');
         const pw = p.userData.world;
-        bone.position.set(wp[0] - pw[0], wp[1] - pw[1], wp[2] - pw[2]);
+        // Bone offsets are scaled; bone scale itself stays 1 so the skinning
+        // maths (and bindMatrix) remain identity-simple.
+        bone.position.set((wp[0] - pw[0]) * S, (wp[1] - pw[1]) * S, (wp[2] - pw[2]) * S);
         p.add(bone);
       } else {
-        bone.position.set(wp[0], wp[1], wp[2]);
+        bone.position.set(wp[0] * S, wp[1] * S, wp[2] * S);
       }
       bone.userData.world = wp;
       bones[name] = bone;
@@ -947,6 +967,18 @@
 
     const loBuilder = new CharacterBuilder(assets, { seg: 10, segLimb: 7, details: false });
     const loGeo = loBuilder.build(boneIndex);
+
+    // Scale the baked geometry (and the relative morph deltas) to match the
+    // scaled bone offsets. Normals are unaffected by a uniform scale.
+    if (S !== 1) {
+      scaleArray(hiGeo.attributes.position.array, S);
+      scaleArray(loGeo.attributes.position.array, S);
+      hiGeo.attributes.position.needsUpdate = true;
+      loGeo.attributes.position.needsUpdate = true;
+      if (hiGeo.morphAttributes.position) {
+        hiGeo.morphAttributes.position.forEach((attr) => scaleArray(attr.array, S));
+      }
+    }
 
     const materials = buildMaterials(assets);
 
@@ -975,12 +1007,14 @@
 
     const lod = new THREE.LOD();
     lod.autoUpdate = true; // the renderer switches levels by camera distance
+    const q = (TFW.Config && TFW.Config.quality) || {};
     lod.addLevel(mesh, 0);
-    lod.addLevel(loMesh, 16);
+    lod.addLevel(loMesh, q.characterLodDistance || 34);
     group.add(lod);
 
     // ---- eyes (small props on the head bone: real rotation for blinking) --
-    const eyes = buildEyes(bones.head);
+    // Bone local space is unscaled, so the eye group carries the scale itself.
+    const eyes = buildEyes(bones.head, S);
 
     const morphIndex = {};
     morphNames.forEach((n, i) => { morphIndex[n] = i; });
@@ -990,6 +1024,12 @@
     return {
       group, lod, mesh, loMesh, skeleton, bones, boneList, materials,
       morphNames, morphIndex, eyes,
+      /** Uniform scale applied from model units to gameplay units. */
+      scale: S,
+      /** Final character height in world units. */
+      height: MODEL_HEIGHT * S,
+      /** Head centre height in world units (camera look-at reference). */
+      headHeight: HEAD.cy * S,
       triangleCount,
       vertexCount: hiBuilder.builder.vertexCount,
       dispose() {
@@ -1005,9 +1045,12 @@
    * Eyeballs + eyelids, parented to the head bone. Kept off the skinned mesh so
    * blinking can use a true rotation (crisper than a linear morph).
    */
-  function buildEyes(headBone) {
+  function buildEyes(headBone, scale) {
     const R = HEAD.r;
     const group = new THREE.Group();
+    // Offsets below stay in authored model units; the group scale lifts both the
+    // offsets and the eye sizes to the final character scale.
+    group.scale.setScalar(scale || 1);
     headBone.add(group);
 
     const scleraMat = new THREE.MeshPhysicalMaterial({
