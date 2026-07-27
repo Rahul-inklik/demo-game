@@ -140,61 +140,22 @@
 
     // -------------------------------------------------------------- ambience
 
+    /** Ambience (wind, snow shimmer) has been removed entirely — silent by design. */
     startAmbience() {
-      if (!this.ready || this.ambienceNodes.length) return;
-
-      // Wind: filtered noise with a slowly sweeping band-pass.
-      const wind = this.ctx.createBufferSource();
-      wind.buffer = this.noiseBuffer;
-      wind.loop = true;
-      const windFilter = this.ctx.createBiquadFilter();
-      windFilter.type = 'bandpass';
-      windFilter.frequency.value = 480;
-      windFilter.Q.value = 0.8;
-      const windGain = this.ctx.createGain();
-      windGain.gain.value = 0.5;
-      const windLfo = this.ctx.createOscillator();
-      windLfo.frequency.value = 0.07;
-      const windLfoGain = this.ctx.createGain();
-      windLfoGain.gain.value = 0.32;
-      windLfo.connect(windLfoGain).connect(windGain.gain);
-      const windSweep = this.ctx.createOscillator();
-      windSweep.frequency.value = 0.045;
-      const windSweepGain = this.ctx.createGain();
-      windSweepGain.gain.value = 260;
-      windSweep.connect(windSweepGain).connect(windFilter.frequency);
-      wind.connect(windFilter).connect(windGain).connect(this.ambienceBus);
-
-      // Snow shimmer: very soft high-passed noise.
-      const snow = this.ctx.createBufferSource();
-      snow.buffer = this.noiseBuffer;
-      snow.loop = true;
-      const snowFilter = this.ctx.createBiquadFilter();
-      snowFilter.type = 'highpass';
-      snowFilter.frequency.value = 4200;
-      const snowGain = this.ctx.createGain();
-      snowGain.gain.value = 0.09;
-      snow.connect(snowFilter).connect(snowGain).connect(this.ambienceBus);
-
-      [wind, snow, windLfo, windSweep].forEach((n) => n.start());
-      this.windGain = windGain;
-      this.windFilter = windFilter;
-      this.ambienceNodes = [wind, snow, windLfo, windSweep];
+      /* no-op: ambience disabled so nothing masks the custom background music */
     }
 
     stopAmbience() {
       this.ambienceNodes.forEach((n) => { try { n.stop(); } catch (e) { /* already stopped */ } });
       this.ambienceNodes = [];
-      this.windGain = null;
     }
 
-    /** 0 at the village, 1 at the summit — the wind gets stronger as you climb. */
-    setAltitude(t01) {
-      if (!this.windGain) return;
-      const t = clamp(t01, 0, 1);
-      this.windGain.gain.value = 0.4 + t * 0.75;
-      this.windFilter.frequency.value = 420 + t * 620;
-    }
+    /**
+     * 0 at the village, 1 at the summit. The wind that used to grow with
+     * altitude has been removed, so this is now a no-op kept for the callers
+     * that report the climb height each frame.
+     */
+    setAltitude(t01) { /* wind removed — nothing to scale with altitude */ }
 
     // ------------------------------------------------ custom music track (MP3)
 

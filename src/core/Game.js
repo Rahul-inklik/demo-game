@@ -214,6 +214,7 @@
       this.ui.hideAllScreens();
       this.ui.hideHUD();
       this.ui.fadeIn();
+      this.ui.exitFullscreen();
       this.cameraController.stopCinematic();
       this.audio.stopMusic();
       this.audio.setDucked(false);

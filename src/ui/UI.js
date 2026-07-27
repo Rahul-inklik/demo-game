@@ -106,7 +106,15 @@
       const c = this.callbacks;
       const clickSound = () => { if (c.onUiSound) c.onUiSound(); };
 
-      this.btnPlay.addEventListener('click', () => { clickSound(); if (c.onPlay) c.onPlay(); });
+      this.btnPlay.addEventListener('click', () => {
+        clickSound();
+        // Must be requested synchronously inside this click handler — browsers
+        // only grant fullscreen from a direct user gesture. On mobile this is
+        // what hides the address bar/URL strip so the game gets the full
+        // screen instead of the cramped view.
+        this.requestFullscreen();
+        if (c.onPlay) c.onPlay();
+      });
       this.errorReload.addEventListener('click', () => global.location.reload());
       this.btnPause.addEventListener('click', () => { clickSound(); if (c.onPause) c.onPause(); });
       this.btnResume.addEventListener('click', () => { clickSound(); if (c.onResume) c.onResume(); });
@@ -117,6 +125,44 @@
       this.btnTitleVictory.addEventListener('click', () => { clickSound(); if (c.onReturnTitle) c.onReturnTitle(); });
       this.btnRestartOver.addEventListener('click', () => { clickSound(); if (c.onRestart) c.onRestart(); });
       this.btnTitleOver.addEventListener('click', () => { clickSound(); if (c.onReturnTitle) c.onReturnTitle(); });
+    }
+
+    // -------------------------------------------------------- fullscreen
+
+    /**
+     * Ask the browser to go fullscreen on the whole page (falls back through
+     * every vendor-prefixed API). This hides the mobile browser's URL bar so
+     * the game gets the entire screen instead of a cramped strip.
+     *
+     * Fullscreen requests are only honoured by browsers when made directly
+     * inside a user-gesture handler (a click/tap), and some browsers/devices
+     * (notably iOS Safari) do not support it at all — in that case this
+     * simply does nothing and the game still runs normally, just without
+     * hiding the address bar.
+     */
+    requestFullscreen() {
+      const el = this.d.documentElement;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen ||
+        el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (!req) return;
+      try {
+        const result = req.call(el);
+        if (result && result.catch) result.catch(() => { /* denied or unsupported — ignore */ });
+      } catch (e) { /* denied or unsupported — ignore */ }
+    }
+
+    exitFullscreen() {
+      const doc = this.d;
+      const isFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement ||
+        doc.mozFullScreenElement || doc.msFullscreenElement;
+      if (!isFullscreen) return;
+      const exit = doc.exitFullscreen || doc.webkitExitFullscreen ||
+        doc.mozCancelFullScreen || doc.msExitFullscreen;
+      if (!exit) return;
+      try {
+        const result = exit.call(doc);
+        if (result && result.catch) result.catch(() => { /* ignore */ });
+      } catch (e) { /* ignore */ }
     }
 
     // -------------------------------------------------------- device / layout
