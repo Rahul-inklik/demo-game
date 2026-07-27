@@ -79,6 +79,70 @@
       stepUp: 1.6,
       spawn: { x: 0, z: -14 },
       spawnYaw: 0,
+
+      /**
+       * ---------------------------------------------------------------
+       * CUSTOM 3D CHARACTER MODEL (Mixamo-rigged GLB/GLTF)
+       * ---------------------------------------------------------------
+       * By default the game uses its built-in procedural character. To use
+       * your own Mixamo child model instead:
+       *
+       *   1. On mixamo.com, upload/auto-rig your character, then download
+       *      each animation with format "glTF Binary (.glb)" and skin ON.
+       *      If you download several animations, use "Add another
+       *      animation" in Mixamo BEFORE downloading so they all end up in
+       *      ONE .glb file with multiple named clips.
+       *      Prefer the "In Place" root motion option for walk/run so the
+       *      clip doesn't fight this game's own movement code.
+       *   2. Put the file at assets/models/character.glb (or change the url
+       *      below).
+       *   3. Set enabled: true.
+       *   4. If your Mixamo clips aren't auto-detected correctly (check the
+       *      browser console for a list of clip names found in your file),
+       *      fill in clipMap with the exact clip names.
+       */
+      model: {
+        enabled: false,
+        url: 'assets/models/character.glb',
+        // Exact AnimationClip names from your file. Pre-filled here for the
+        // standard Mixamo action set this game was tuned for:
+        //   Idle, Run, Fast_Run, Jump, Left Turn, Right Turn, Talking, Victory
+        // Leave any entry as null to let the game guess from clip names
+        // containing keywords instead (see GLTFCharacter.js CLIP_KEYWORDS).
+        // There is no dedicated "walk" or "land" clip in that pack, so:
+        //   - walk (light movement) reuses "Run"
+        //   - run (sprinting) uses "Fast_Run"
+        //   - jumping up and falling both reuse "Jump" (one clip, no separate fall)
+        //   - landing has no clip and simply falls back to idle/run
+        //   - planting the flag reuses "Victory" (it flows straight into the
+        //     celebrate pose anyway once the flag is planted)
+        clipMap: {
+          idle: 'Idle',
+          walk: 'Run',
+          run: 'Fast_Run',
+          jumpUp: 'Jump',
+          jumpFall: 'Jump',
+          land: null,
+          interact: 'Talking',
+          plant: 'Victory',
+          celebrate: 'Victory',
+          turnLeft: 'Left Turn',
+          turnRight: 'Right Turn',
+        },
+        // Seconds to crossfade between animation clips.
+        crossfade: 0.25,
+        /**
+         * Turn-in-place detection: while grounded and moving slowly, a fast
+         * change of facing direction plays "Left Turn"/"Right Turn" instead
+         * of idle/walk. Tune these if turns feel too twitchy or too sluggish.
+         */
+        turnAngularSpeed: 1.4,   // rad/s of yaw change needed to trigger a turn clip
+        turnMaxSpeed: 1.6,       // only while moving slower than this (world units/s)
+        // If "Left Turn"/"Right Turn" play backwards from the way the
+        // character actually turns on screen, flip this instead of swapping
+        // the clip names above.
+        turnDirectionFlipped: false,
+      },
     },
 
     camera: {

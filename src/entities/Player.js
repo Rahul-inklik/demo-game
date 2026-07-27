@@ -18,7 +18,7 @@
   'use strict';
 
   const TFW = (global.TFW = global.TFW || {});
-  const { clamp, clamp01, damp, dampAngle, moveTowards, lerp } = TFW.Utils;
+  const { clamp, clamp01, damp, dampAngle, angleDelta, moveTowards, lerp } = TFW.Utils;
 
   /**
    * Facial expressions as morph-target weight sets plus an eye-openness value.
@@ -94,8 +94,38 @@
       this._initRestPose();
       this._attachFlag(assets);
 
+      // ---- optional custom Mixamo model (see Config.player.model) --------
+      // Off by default. The procedural character above always loads and
+      // remains the visible character until (and unless) a custom model
+      // finishes loading successfully, so a missing/broken model file can
+      // never leave the player invisible.
+      this._customReady = false;
+      this._customModel = null;
+      this._lastYawForTurn = this.yaw;
+      const modelCfg = this.cfg.model;
+      if (modelCfg && modelCfg.enabled && TFW.GLTFCharacter) {
+        this._customModel = new TFW.GLTFCharacter(modelCfg.url, this.cfg.height, {
+          clipMap: modelCfg.clipMap,
+          crossfade: modelCfg.crossfade,
+        });
+        this.group.add(this._customModel.group);
+        this._customModel.onReady(() => this._onCustomModelReady());
+      }
+
       scene.add(this.group);
       this._tmpTarget = new THREE.Vector3();
+    }
+
+    /** Called once the optional custom GLTF model has finished loading. */
+    _onCustomModelReady() {
+      this.character.group.visible = false;
+      this._eyeHeight = this._customModel.headHeight || this._eyeHeight;
+      // Re-parent the flag onto the model's own right hand if one was found;
+      // THREE.Object3D#add() automatically detaches it from the old parent.
+      if (this._customModel.handBone) {
+        this._customModel.handBone.add(this.flag.group);
+      }
+      this._customReady = true;
     }
 
     // ------------------------------------------------------------- setup
@@ -207,8 +237,13 @@
 
       this.flag.setWind(0.7 + clamp01(this.speed / this.cfg.runSpeed) * 0.9);
 
-      this._animate(dt);
-      this._updateFace(dt);
+      if (this._customReady) {
+        this._animateCustomModel(dt);
+      } else {
+        this._animate(dt);
+        this._updateFace(dt);
+      }
+      if (this._customModel) this._customModel.update(dt);
       this.flag.update(dt);
       // The character LOD is auto-updated by the renderer from the active
       // camera each frame (THREE.LOD.autoUpdate), so no manual step is needed.
@@ -362,6 +397,60 @@
       else if (this._action === 'land') this._poseLand(dt);
       else if (this._state === 'air') this._poseAir(dt);
       else this._poseLocomotion(dt, speed01, moving);
+    }
+
+    /**
+     * Drives the optional custom Mixamo model instead of the procedural bone
+     * poses: keeps the same action-state machine and footstep timing as
+     * _animate(), but picks/crossfades an AnimationClip instead of posing
+     * individual bones.
+     */
+    _animateCustomModel(dt) {
+      const speed01 = clamp01(this.speed / this.cfg.runSpeed);
+      const moving = this.speed > 0.4 && this.grounded;
+      const running = this.speed > this.cfg.walkSpeed + 1.5;
+
+      const freq = lerp(6, 12.5, speed01);
+      if (moving && (!this._action || this._action === 'land')) {
+        const prev = this._animPhase;
+        this._animPhase += dt * freq;
+        const s = Math.sin(this._animPhase);
+        const ps = Math.sin(prev);
+        if (ps < 0 && s >= 0) this._emitFoot(false);
+        else if (ps > 0 && s <= 0) this._emitFoot(true);
+      }
+
+      if (this._action) {
+        this._actionT += dt;
+        if (this._action === 'land' && this._actionT > 0.34) this._action = null;
+        else if (this._action === 'interact' && (this._actionT > 0.95 || this.speed > 2.5)) this._action = null;
+        else if (this._action === 'plant' && this._actionT > 0.9) { this._action = 'celebrate'; this._actionT = 0; }
+      }
+
+      // Turn-in-place detection: only relevant while grounded and not
+      // already running/jumping/acting, otherwise the run/jump clip wins.
+      const modelCfg = this.cfg.model || {};
+      const yawRate = angleDelta(this._lastYawForTurn, this.yaw) / Math.max(dt, 0.0001);
+      this._lastYawForTurn = this.yaw;
+      const turningSlow = this.grounded && !this._action &&
+        this.speed < (modelCfg.turnMaxSpeed === undefined ? 1.6 : modelCfg.turnMaxSpeed) &&
+        Math.abs(yawRate) > (modelCfg.turnAngularSpeed === undefined ? 1.4 : modelCfg.turnAngularSpeed);
+
+      let key;
+      if (this._action === 'celebrate') key = 'celebrate';
+      else if (this._action === 'plant') key = 'plant';
+      else if (this._action === 'interact') key = 'interact';
+      else if (this._action === 'land') key = 'land';
+      else if (this._state === 'air') key = this.velocity.y > 0.5 ? 'jumpUp' : 'jumpFall';
+      else if (moving) key = running ? 'run' : 'walk';
+      else if (turningSlow) {
+        const flipped = !!modelCfg.turnDirectionFlipped;
+        const turningRight = flipped ? yawRate < 0 : yawRate > 0;
+        key = turningRight ? 'turnRight' : 'turnLeft';
+      } else key = 'idle';
+
+      this._customModel.playAction(key);
+      this.group.position.y = this.position.y;
     }
 
     _poseLocomotion(dt, speed01, moving) {
@@ -547,6 +636,7 @@
       this.scene.remove(this.group);
       this.flag.dispose();
       this.character.dispose();
+      if (this._customModel) this._customModel.dispose();
     }
   }
 

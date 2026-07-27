@@ -185,6 +185,9 @@
 
   <!-- ===== Engine (vendored locally so the game also runs offline) ===== -->
   <script src="vendor/three.min.js"></script>
+  <!-- GLTFLoader: only needed if you enable a custom Mixamo model in
+       Config.player.model.enabled (see src/entities/GLTFCharacter.js). -->
+  <script src="vendor/GLTFLoader.js"></script>
 
   <!-- ===== Game modules (classic scripts: playable directly from file://) ===== -->
   <script src="src/core/Utils.js"></script>
@@ -205,6 +208,7 @@
   <script src="src/entities/Signboard.js"></script>
   <script src="src/world/Course.js"></script>
   <script src="src/entities/CharacterRig.js"></script>
+  <script src="src/entities/GLTFCharacter.js"></script>
   <script src="src/entities/Player.js"></script>
   <script src="src/entities/Yeti.js"></script>
   <script src="src/core/GameManager.js"></script>
