@@ -61,6 +61,8 @@
       this.musicTrackFailed = false;
       this.musicWanted = false;
       this.ducked = false;
+      /** True while the pause menu is open — silences music/ambience entirely. */
+      this.gamePaused = false;
       this._musicFade = null;
       this._pauseAfterFade = false;
       this._createMusicEl();
@@ -134,10 +136,35 @@
       if (!this.ctx) return;
       const cfg = TFW.Config.audio;
       const t = this.now;
+      const music = this.gamePaused ? 0 : (ducked ? cfg.musicVolume * 0.35 : cfg.musicVolume);
+      const ambience = this.gamePaused ? 0 : (ducked ? cfg.ambienceVolume * 0.3 : cfg.ambienceVolume);
       this.musicBus.gain.cancelScheduledValues(t);
-      this.musicBus.gain.linearRampToValueAtTime(ducked ? cfg.musicVolume * 0.35 : cfg.musicVolume, t + 0.4);
+      this.musicBus.gain.linearRampToValueAtTime(music, t + 0.4);
       this.ambienceBus.gain.cancelScheduledValues(t);
-      this.ambienceBus.gain.linearRampToValueAtTime(ducked ? cfg.ambienceVolume * 0.3 : cfg.ambienceVolume, t + 0.4);
+      this.ambienceBus.gain.linearRampToValueAtTime(ambience, t + 0.4);
+    }
+
+    /**
+     * Fully silence music/ambience while the pause menu is open — unlike
+     * setDucked (which only lowers the volume for menus/quiz that still play
+     * over gameplay), pausing stops the whole game, so the music stops too.
+     * SFX (uiClick, uiBack, etc.) are untouched, so the pause menu still has
+     * sound feedback.
+     */
+    setPaused(paused) {
+      this.gamePaused = !!paused;
+      this._applyTrackVolume(0.25);
+      if (!this.ctx) return;
+      const cfg = TFW.Config.audio;
+      const t = this.now;
+      const duckMusic = this.ducked ? 0.35 : 1;
+      const duckAmbience = this.ducked ? 0.3 : 1;
+      const music = this.gamePaused ? 0 : cfg.musicVolume * duckMusic;
+      const ambience = this.gamePaused ? 0 : cfg.ambienceVolume * duckAmbience;
+      this.musicBus.gain.cancelScheduledValues(t);
+      this.musicBus.gain.linearRampToValueAtTime(music, t + 0.25);
+      this.ambienceBus.gain.cancelScheduledValues(t);
+      this.ambienceBus.gain.linearRampToValueAtTime(ambience, t + 0.25);
     }
 
     // -------------------------------------------------------------- ambience
@@ -214,7 +241,7 @@
     /** Target element volume, honouring master volume, mute and ducking. */
     _trackTargetVolume() {
       const cfg = TFW.Config.audio;
-      if (!this.enabled) return 0;
+      if (!this.enabled || this.gamePaused) return 0;
       const base = (cfg.musicTrackVolume === undefined ? cfg.musicVolume : cfg.musicTrackVolume);
       const vol = base * cfg.masterVolume * (this.ducked ? 0.35 : 1);
       return clamp(vol, 0, 1);

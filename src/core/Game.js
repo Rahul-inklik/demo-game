@@ -255,10 +255,11 @@
       this.paused = !this.paused;
       if (this.paused) {
         this.ui.showPause();
-        this.audio.setDucked(true);
+        this.audio.setPaused(true);
         this.input.exitPointerLock();
       } else {
         this.ui.hidePause();
+        this.audio.setPaused(false);
         this.audio.setDucked(this.gameManager.signOpen || this.gameManager.state === TFW.GameManager.STATE.QUIZ);
         this._lastTime = performance.now();
       }
