@@ -44,6 +44,8 @@
     checkpointOff: 0x9fb6cf,
     checkpointOn: 0xffc94d,
     sparkle: 0xfff3b0,
+    coinGold: 0xffd23f,
+    coinGoldDeep: 0xe8a416,
   };
 
   const Config = {
@@ -79,6 +81,27 @@
       stepUp: 1.6,
       spawn: { x: 0, z: -14 },
       spawnYaw: 0,
+
+      /**
+       * How the Tiranga sits in the boy's right hand (see Player._attachFlag).
+       *
+       * The flag group is parented to the handR bone, so `offset` is in that
+       * bone's bind-space (and gets multiplied by the character scale), placing
+       * the pole base in the middle of his mitten.
+       *
+       * `rotation` exists to cancel the carry pose. The shoulder/arm/forearm
+       * chain holds the right arm at roughly -1.328 rad about X (plus small
+       * rest tilts), which used to leave the pole leaning back over his
+       * shoulder. These angles are the exact inverse of that accumulated
+       * rotation, so the pole stands vertical and the cloth flies out to his
+       * right. Retune the arm angles in Player._poseLocomotion and these need
+       * recomputing to match.
+       */
+      flagGrip: {
+        scale: 0.72,
+        offset: { x: 0, y: -0.040, z: 0.004 },
+        rotation: { x: 1.3275, y: 0.0659, z: 0.0753 },
+      },
 
       /**
        * ---------------------------------------------------------------
@@ -212,6 +235,34 @@
       fallDepth: 26,
       respawnDelay: 0.85,
       interactRange: 4.2,
+    },
+
+    /**
+     * The floating golden star above every signboard (see Signboard.js). It is
+     * purely a "this is worth score" marker, styled like a coin/reward icon so
+     * it reads instantly as a bonus rather than as more scenery.
+     */
+    signStar: {
+      /** Height above the signboard's own top edge. */
+      height: 1.15,
+      /** Point radii of the 3D star shape. */
+      outerRadius: 0.30,
+      innerRadius: 0.13,
+      /** Extrusion thickness. */
+      depth: 0.09,
+      /** Bob + spin, so it never sits dead still. */
+      bobAmplitude: 0.10,
+      bobSpeed: 1.6,
+      spinSpeed: 1.1,
+      /** Pulsing emissive glow range. */
+      glowMin: 0.85,
+      glowMax: 1.6,
+      glowSpeed: 2.2,
+      /** Soft point light cast from the star. */
+      lightIntensity: 1.1,
+      lightDistance: 7,
+      /** Halo sprite size, relative to outerRadius. */
+      haloScale: 5.4,
     },
 
     /**

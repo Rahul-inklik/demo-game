@@ -38,6 +38,10 @@
       // Must stay above camera.maxDistance so zooming out never swaps the
       // model in view (that read as an ugly pop).
       characterLodDistance: 26,
+      // Ring density of the procedural hero (CharacterRig): body/head rings and
+      // limb rings. The far LOD level is fixed and cheap regardless of tier.
+      characterSegments: 14,
+      characterLimbSegments: 10,
       fogFar: 380,
       fireworkShellParticles: 34,
       celebrateParticles: 40,
@@ -62,6 +66,8 @@
       terrainSegZ: 250,
       distantPeaks: 0.85,
       characterLodDistance: 30,
+      characterSegments: 18,
+      characterLimbSegments: 12,
       fogFar: 460,
       fireworkShellParticles: 52,
       celebrateParticles: 70,
@@ -86,6 +92,8 @@
       terrainSegZ: 320,
       distantPeaks: 1,
       characterLodDistance: 34,
+      characterSegments: 22,
+      characterLimbSegments: 16,
       fogFar: 520,
       fireworkShellParticles: 70,
       celebrateParticles: 90,

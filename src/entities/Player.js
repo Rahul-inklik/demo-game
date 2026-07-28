@@ -102,6 +102,8 @@
       this._customReady = false;
       this._customModel = null;
       this._lastYawForTurn = this.yaw;
+      /** Previous yaw, used only to feed turn rate into the secondary motion. */
+      this._prevYaw = this.yaw;
       const modelCfg = this.cfg.model;
       if (modelCfg && modelCfg.enabled && TFW.GLTFCharacter) {
         this._customModel = new TFW.GLTFCharacter(modelCfg.url, this.cfg.height, {
@@ -163,10 +165,15 @@
       // it follows the skinned arm exactly. Bone local space is unscaled, so the
       // flag carries the character scale itself.
       const S = this.character.scale || 1;
+      const grip = this.cfg.flagGrip || {};
+      const off = grip.offset || { x: 0, y: -0.040, z: 0.004 };
+      // Cancels the carry pose's accumulated arm rotation so the pole stands
+      // vertical in his fist instead of leaning back over the shoulder.
+      const rot = grip.rotation || { x: 1.3275, y: 0.0659, z: 0.0753 };
       this.flag = new TFW.Flag(assets, { poleHeight: 2.3, clothWidth: 1.4, clothHeight: 0.9, withPole: true });
-      this.flag.group.scale.setScalar(0.72 * S);
-      this.flag.group.position.set(0.0, -0.10 * S, 0.03 * S);
-      this.flag.group.rotation.set(0.10, 0, -0.16);
+      this.flag.group.scale.setScalar((grip.scale === undefined ? 0.72 : grip.scale) * S);
+      this.flag.group.position.set(off.x * S, off.y * S, off.z * S);
+      this.flag.group.rotation.set(rot.x, rot.y, rot.z);
       this.bones.handR.add(this.flag.group);
     }
 
@@ -242,6 +249,7 @@
       } else {
         this._animate(dt);
         this._updateFace(dt);
+        this._updateSecondary(dt);
       }
       if (this._customModel) this._customModel.update(dt);
       this.flag.update(dt);
@@ -474,11 +482,15 @@
       this._bone('forearmL', moving ? -Math.max(0, swing) * armAmp * 0.5 : 0, 0, 0.0018, dt);
       this._bone('armR', -0.62 + (moving ? swing * armAmp * 0.16 : Math.cos(t * 1.7) * 0.03), 0, 0.0018, dt);
       this._bone('forearmR', -0.55, 0, 0.002, dt);
-      this._bone('shoulderL', moving ? swing * 0.06 : 0, 0, 0.003, dt);
-      this._bone('shoulderR', -0.10, 0, 0.003, dt);
+
+      // Breathing never stops: deep and slow at rest, shallow and quick when
+      // running. It rides the spine and lifts both shoulders slightly.
+      const breathRate = lerp(1.7, 3.4, speed01);
+      const breathe = Math.sin(t * breathRate) * lerp(0.017, 0.006, speed01);
+      this._bone('shoulderL', (moving ? swing * 0.06 : 0) + breathe * 0.9, 0, 0.003, dt);
+      this._bone('shoulderR', -0.10 + breathe * 0.9, 0, 0.003, dt);
 
       // Spine leans into the run, chest counter-rotates for a natural gait.
-      const breathe = moving ? 0 : Math.sin(t * 1.8) * 0.012;
       this._bone('hips', 0, moving ? swing * 0.03 : 0, 0.003, dt, moving ? -swing * 0.06 : 0);
       this._bone('spine', speed01 * 0.13 + breathe, 0, 0.0025, dt);
       this._bone('chest', speed01 * 0.07, 0, 0.0025, dt, moving ? swing * 0.08 : 0);
@@ -575,6 +587,24 @@
       this._bone('neck', -0.10, 0, 0.003, dt);
       this._bone('head', -0.12, Math.sin(t * 8) * 0.10, 0.004, dt);
       this.group.position.y = this.position.y + Math.abs(Math.sin(t * 6)) * 0.15;
+    }
+
+    /**
+     * Springy follow-through on the backpack and scarf. The logic lives in
+     * CharacterRig because it only ever drives that rig's three decorative
+     * bones, so it can never fight the pose functions above.
+     */
+    _updateSecondary(dt) {
+      if (!this.character.updateSecondary) return;
+      const yawRate = angleDelta(this._prevYaw, this.yaw) / Math.max(dt, 0.0001);
+      this._prevYaw = this.yaw;
+      this.character.updateSecondary(dt, {
+        speed01: clamp01(this.speed / this.cfg.runSpeed),
+        grounded: this.grounded,
+        airVel: this.velocity.y,
+        yawRate,
+        phase: this._animPhase,
+      });
     }
 
     _emitFoot(left) {
