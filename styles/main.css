@@ -150,38 +150,104 @@ kbd {
 .error-details pre { white-space: pre-wrap; word-break: break-word; background: #f3f6fb; padding: 10px; border-radius: 12px; max-height: 180px; overflow: auto; }
 
 /* ------------------------- Title ------------------------- */
-#title-screen { background: radial-gradient(circle at 50% 22%, rgba(255, 226, 170, 0.5), rgba(12, 46, 84, 0.82)); }
-.title-wrap { text-align: center; max-width: 760px; animation: popIn 0.45s cubic-bezier(0.2, 1.2, 0.4, 1); }
+#title-screen {
+  background:
+    radial-gradient(ellipse 900px 600px at 25% 15%, rgba(255, 200, 130, 0.35), transparent 60%),
+    radial-gradient(circle at 80% 85%, rgba(90, 190, 255, 0.28), transparent 55%),
+    linear-gradient(160deg, #0b2044 0%, #123a63 48%, #1c5187 100%);
+  padding: 28px;
+}
+
+/* Two-column hero on comfortable widths: game branding on the left,
+   controls reference on the right — never squashed into one flex row. */
+.title-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  align-items: center;
+  gap: clamp(20px, 4vw, 56px);
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  animation: popIn 0.45s cubic-bezier(0.2, 1.2, 0.4, 1);
+}
+
+.title-hero { text-align: left; min-width: 0; }
+
 .game-title {
-  margin: 0;
-  font-size: clamp(2.6rem, 7vw, 4.6rem);
-  line-height: 1;
+  margin: 14px 0 0;
+  font-size: clamp(2.4rem, 5.4vw, 4.2rem);
+  line-height: 1.02;
   font-weight: 900;
   color: #fff;
   text-shadow: 0 5px 0 #e07b16, 0 10px 28px rgba(0, 0, 0, 0.4);
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
 }
 .game-subtitle {
   margin: 8px 0 4px;
-  font-size: clamp(1.1rem, 3vw, 1.8rem);
+  font-size: clamp(1.05rem, 2.2vw, 1.5rem);
   color: #ffe6b8;
   font-weight: 800;
   text-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
 }
-.game-tagline { color: #eaf4ff; margin: 6px auto 22px; max-width: 520px; font-size: 1rem; line-height: 1.5; }
-.controls-card {
-  margin: 24px auto 0;
-  background: var(--glass);
-  border-radius: 18px;
-  padding: 14px 20px;
-  max-width: 620px;
-  box-shadow: var(--shadow-sm);
+.game-tagline {
+  color: #dcecfb;
+  margin: 10px 0 26px;
+  max-width: 46ch;
+  font-size: clamp(0.92rem, 1.4vw, 1.05rem);
+  line-height: 1.55;
 }
-.controls-card h3 { margin: 4px 0 10px; font-size: 1rem; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-soft); }
-.controls-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 16px; }
-.controls-grid li { display: flex; align-items: center; gap: 4px; font-size: 0.9rem; font-weight: 600; }
-.controls-grid span { color: var(--ink-soft); }
-.credits { color: #d5e7f7; font-size: 0.82rem; margin-top: 16px; }
+
+#btn-play { display: inline-flex; align-items: center; gap: 10px; }
+.btn-play-ico { font-size: 0.8em; line-height: 1; }
+
+.credits { color: #b9d3ec; font-size: 0.8rem; margin: 22px 0 0; line-height: 1.5; }
+
+/* ------------------------- Controls card ------------------------- */
+.controls-card {
+  background: var(--glass);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 20px;
+  padding: 20px 22px 18px;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(6px);
+  min-width: 0;
+}
+.controls-card h3 {
+  margin: 0 0 14px;
+  font-size: 0.82rem;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 800;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(71, 88, 122, 0.16);
+}
+.controls-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+.controls-grid li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 7px 4px;
+  border-radius: 10px;
+}
+.controls-grid li:hover { background: rgba(71, 88, 122, 0.06); }
+.controls-grid .ctrl-keys {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 84px;
+}
+.controls-grid span:last-child { color: var(--ink-soft); line-height: 1.3; }
 
 /* ------------------------- HUD ------------------------- */
 .hud {
@@ -223,6 +289,41 @@ kbd {
 .hud-card-row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; font-weight: 700; padding: 2px 0; }
 .hud-key { color: var(--ink-soft); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.7px; align-self: center; }
 #btn-pause { pointer-events: auto; }
+
+.hud-buttons { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+
+/* ------------------------- Mute / sound toggle ------------------------- */
+.btn-icon-toggle {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #1c3f68, #12294a);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.btn-icon-toggle:hover { transform: translateY(-1px) scale(1.04); }
+.btn-icon-toggle:active { transform: translateY(1px) scale(0.96); }
+.btn-icon-toggle:focus-visible { outline: 3px solid #ffd27a; outline-offset: 2px; }
+.btn-icon-toggle .mute-icon { font-size: 1.15rem; line-height: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3)); }
+.btn-icon-toggle.is-muted { background: linear-gradient(180deg, #2a3548, #1a2333); }
+
+/* Title screen only: floats top-right, clear of the title/controls grid.
+   Scoped to #title-screen so it doesn't also pull the in-HUD mute button
+   (which must stay a normal flex item next to Pause) out of its layout. */
+#title-screen .btn-mute {
+  position: absolute;
+  top: calc(18px + var(--safe-t));
+  right: calc(18px + var(--safe-r));
+  z-index: 2;
+}
+
+
 
 .interact-prompt {
   position: absolute;
@@ -510,6 +611,26 @@ html.is-touch button { -webkit-tap-highlight-color: transparent; }
   box-shadow: 0 6px 26px rgba(255, 150, 40, 0.45), inset 0 0 26px rgba(255, 190, 100, 0.3);
 }
 
+/* Auto-sprint charge ring: fills clockwise while the stick is held fully
+   forward, so the player can see the sprint coming instead of guessing. */
+.touch-stick-charge {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  background: conic-gradient(
+    #ffe6ab 0deg,
+    #ff9c2e var(--sprint-charge, 0deg),
+    rgba(255, 255, 255, 0) var(--sprint-charge, 0deg)
+  );
+  -webkit-mask: radial-gradient(circle, rgba(0, 0, 0, 0) 0 61%, #000 64%);
+  mask: radial-gradient(circle, rgba(0, 0, 0, 0) 0 61%, #000 64%);
+}
+.touch-stick.charging .touch-stick-charge { opacity: 0.95; }
+.touch-stick.running .touch-stick-charge { opacity: 0; }
+
 .touch-stick-knob {
   position: absolute;
   left: 50%;
@@ -647,15 +768,33 @@ html.is-mobile.is-portrait .rotate-hint { display: flex; }
   .interact-prompt { display: none; }             /* the touch E button replaces it */
 }
 
+/* Below this, the two-column hero no longer has room to breathe — stack the
+   branding above the controls card and centre everything, like a phone-first
+   game menu instead of a cramped desktop layout squeezed down. */
+@media (max-width: 860px) {
+  #title-screen { padding: 20px; align-items: flex-start; padding-top: max(28px, var(--safe-t)); }
+  .title-wrap { grid-template-columns: 1fr; gap: 22px; text-align: center; margin-top: 36px; }
+  .title-hero { text-align: center; }
+  .game-tagline { margin-inline: auto; }
+  .controls-card { text-align: left; }
+}
+
+@media (max-width: 480px) {
+  #title-screen .btn-mute { top: calc(12px + var(--safe-t)); right: calc(12px + var(--safe-r)); width: 38px; height: 38px; }
+  .btn-mute .mute-icon { font-size: 1rem; }
+  .btn-icon-toggle { width: 36px; height: 36px; }
+}
+
 @media (max-width: 700px) {
   .panel { padding: 18px 16px; border-radius: 18px; }
   .btn { font-size: 0.95rem; padding: 11px 20px; }
   .btn-xl { font-size: 1.1rem; padding: 14px 30px; }
   .game-title { text-shadow: 0 4px 0 #e07b16, 0 8px 20px rgba(0, 0, 0, 0.4); }
   .game-tagline { font-size: 0.9rem; margin-bottom: 16px; }
-  .controls-card { padding: 12px 14px; margin-top: 16px; }
-  .controls-grid { grid-template-columns: 1fr 1fr; gap: 6px 10px; }
-  .controls-grid li { font-size: 0.78rem; }
+  .controls-card { padding: 16px 16px 14px; }
+  .controls-grid { grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+  .controls-grid li { font-size: 0.78rem; padding: 6px 2px; }
+  .controls-grid .ctrl-keys { min-width: 0; }
   .credits { font-size: 0.72rem; }
 
   #quiz-question { font-size: 1.08rem; margin: 10px 0 12px; }
@@ -676,13 +815,16 @@ html.is-mobile.is-portrait .rotate-hint { display: flex; }
 @media (max-height: 480px) and (orientation: landscape) {
   .screen { padding: 10px; align-items: flex-start; }
   .panel { padding: 14px 16px; max-height: calc(100vh - 20px); }
-  .title-wrap { padding-top: 4px; }
-  .game-title { font-size: 2rem; }
-  .game-subtitle { font-size: 0.95rem; margin: 4px 0 2px; }
+  #title-screen { padding: 10px; align-items: flex-start; }
+  .title-wrap { grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr); gap: 14px; padding-top: 4px; }
+  .title-hero { text-align: left; }
+  .game-title { font-size: 1.7rem; margin-top: 6px; }
+  .game-subtitle { font-size: 0.9rem; margin: 4px 0 2px; }
   .game-tagline { display: none; }
-  .controls-card { margin-top: 10px; padding: 8px 12px; }
-  .controls-grid { grid-template-columns: repeat(4, 1fr); gap: 4px 8px; }
-  .controls-grid li { font-size: 0.68rem; }
+  .controls-card { padding: 10px 12px 8px; }
+  .controls-card h3 { margin-bottom: 8px; padding-bottom: 6px; }
+  .controls-grid { grid-template-columns: repeat(2, 1fr); gap: 2px 8px; }
+  .controls-grid li { font-size: 0.68rem; padding: 3px 2px; }
   .credits { display: none; }
   .btn-xl { font-size: 1rem; padding: 11px 26px; }
   #quiz-question { font-size: 0.98rem; margin: 8px 0 10px; }

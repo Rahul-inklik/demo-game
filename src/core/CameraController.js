@@ -9,7 +9,7 @@
   'use strict';
 
   const TFW = (global.TFW = global.TFW || {});
-  const { clamp, damp, approach } = TFW.Utils;
+  const { clamp, clamp01, damp, approach, lerp, smootherstep } = TFW.Utils;
 
   class CameraController {
     constructor(camera, config) {
@@ -26,6 +26,7 @@
       this.currentPos = new THREE.Vector3(0, 5, -20);
 
       this.cinematic = null;
+      this.conversation = null;
       this.shake = new THREE.Vector3();
 
       /**
@@ -56,13 +57,13 @@
     }
 
     applyLook(look) {
-      if (this.cinematic) return;
+      if (this.cinematic || this.conversation) return;
       this.yaw -= look.x;
       this.pitch = clamp(this.pitch + look.y, this.cfg.minPitch, this.cfg.maxPitch);
     }
 
     applyZoom(zoom) {
-      if (!zoom || this.cinematic) return;
+      if (!zoom || this.cinematic || this.conversation) return;
       this.targetDistance = clamp(this.targetDistance + zoom, this.cfg.minDistance, this.cfg.maxDistance);
     }
 
@@ -131,6 +132,10 @@
         this._updateCinematic(dt);
         return;
       }
+      if (this.conversation) {
+        this._updateConversation(dt, shakeOffset);
+        return;
+      }
 
       this.desiredTarget.copy(headPos);
       this.target.x = damp(this.target.x, this.desiredTarget.x, 0.001, dt);
@@ -155,6 +160,143 @@
       this.currentPos.x = approach(this.currentPos.x, this._tmp.x, rate, dt);
       this.currentPos.y = approach(this.currentPos.y, this._tmp.y, rate, dt);
       this.currentPos.z = approach(this.currentPos.z, this._tmp.z, rate, dt);
+
+      this.camera.position.copy(this.currentPos);
+      if (shakeOffset) this.camera.position.add(shakeOffset);
+      this.camera.lookAt(this.target);
+    }
+
+    // ---------------------------------------------------------- conversation
+
+    /**
+     * Frame two characters together in one cinematic "two-shot" so the boy and
+     * the Yeti are both clearly on screen while they talk, instead of the
+     * normal over-the-shoulder follow (which leaves the Yeti half out of frame
+     * and towering over the camera).
+     *
+     * The shot is a RAISED THREE-QUARTER angle looking down on the pair:
+     *
+     *                        ,--- camera (elevated, angled down)
+     *                      /
+     *                    v
+     *        🧒  <-- 1.5-2 m -->  🐻
+     *
+     * Looking down is what makes the very tall Yeti and the small boy read as
+     * a balanced pair. The pull-back distance is solved from the camera's real
+     * fov *and* aspect, checking the pair's horizontal spread and full height
+     * separately and taking whichever needs more room — so the framing holds up
+     * on a narrow phone screen as well as a wide desktop one.
+     *
+     * The move into the shot is eased (not snapped), then held with a slow
+     * dolly-in and a barely-there orbital drift, which is what gives it the
+     * deliberate, composed feel of a scripted conversation rather than a camera
+     * that simply teleported.
+     *
+     * @param {THREE.Vector3} aPos    first character's ground position (the boy)
+     * @param {THREE.Vector3} bPos    second character's ground position (the Yeti)
+     * @param {object} [opts]         { aHeight, bHeight } full body heights
+     */
+    startConversation(aPos, bPos, opts) {
+      const o = opts || {};
+      const d = this.cfg.dialogue || {};
+      const aH = o.aHeight === undefined ? 1.9 : o.aHeight;
+      const bH = o.bHeight === undefined ? 6.8 : o.bHeight;
+      const tallest = Math.max(aH, bH);
+
+      const mid = new THREE.Vector3(
+        (aPos.x + bPos.x) / 2,
+        (aPos.y + bPos.y) / 2,
+        (aPos.z + bPos.z) / 2
+      );
+      // Aim between their two heights — a little under the Yeti's face and a
+      // little over the boy's, so neither is clipped at the frame edge.
+      const focus = new THREE.Vector3(mid.x, mid.y + tallest * 0.42, mid.z);
+
+      const axisX = bPos.x - aPos.x;
+      const axisZ = bPos.z - aPos.z;
+      const separation = Math.max(0.5, Math.hypot(axisX, axisZ));
+      const nx = axisX / separation;
+      const nz = axisZ / separation;
+      // Perpendicular (in XZ) to the line between them — the two-shot side.
+      let sideX = -nz;
+      let sideZ = nx;
+      // Stay on whichever side the camera already is, so the move is a short
+      // glide rather than a jarring swing all the way around them.
+      if ((this.currentPos.x - mid.x) * sideX + (this.currentPos.z - mid.z) * sideZ < 0) {
+        sideX = -sideX;
+        sideZ = -sideZ;
+      }
+
+      // Solve the distance that fits the pair, from the camera's real frustum.
+      const vFov = (this.camera.fov * Math.PI) / 180;
+      const halfV = Math.max(0.15, Math.tan(vFov / 2));
+      const halfH = Math.max(0.15, halfV * (this.camera.aspect || 1.6));
+      const padH = d.padH === undefined ? 1.8 : d.padH;
+      const padV = d.padV === undefined ? 1.5 : d.padV;
+      const needH = (separation * 0.5 + padH) / halfH;
+      const needV = (tallest * 0.5 + padV) / halfV;
+      const minDist = d.minDistance === undefined ? 7 : d.minDistance;
+
+      this.conversation = {
+        focus,
+        sideX,
+        sideZ,
+        dist: Math.max(needH, needV, minDist),
+        elevation: d.elevation === undefined ? 0.52 : d.elevation,
+        skew: d.skew === undefined ? 0.42 : d.skew,
+        easeSeconds: d.easeSeconds === undefined ? 1.15 : d.easeSeconds,
+        pushIn: d.pushIn === undefined ? 0.07 : d.pushIn,
+        pushInSeconds: d.pushInSeconds === undefined ? 7 : d.pushInSeconds,
+        driftAmount: d.driftAmount === undefined ? 0.07 : d.driftAmount,
+        driftSpeed: d.driftSpeed === undefined ? 0.22 : d.driftSpeed,
+        // Where the camera was when the conversation began — the eased glide
+        // starts from exactly here so there is never a visible jump.
+        fromPos: this.currentPos.clone(),
+        fromTarget: this.target.clone(),
+        elapsed: 0,
+      };
+    }
+
+    stopConversation() { this.conversation = null; }
+
+    _updateConversation(dt, shakeOffset) {
+      const c = this.conversation;
+      c.elapsed += dt;
+
+      // Slow orbital drift + a gentle dolly-in over the length of the chat.
+      const ang = c.skew + Math.sin(c.elapsed * c.driftSpeed) * c.driftAmount;
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
+      const sx = c.sideX * cosA - c.sideZ * sinA;
+      const sz = c.sideX * sinA + c.sideZ * cosA;
+
+      const pushT = c.pushInSeconds > 0 ? clamp01(c.elapsed / c.pushInSeconds) : 1;
+      const dist = c.dist * (1 - c.pushIn * smootherstep(pushT));
+
+      // Raised angle: swing the view direction up out of the horizontal plane
+      // so the camera looks down on both characters.
+      const elev = c.elevation + Math.sin(c.elapsed * 0.18) * 0.015;
+      const cosE = Math.cos(elev);
+      const sinE = Math.sin(elev);
+
+      this._tmp.set(
+        c.focus.x + sx * cosE * dist,
+        c.focus.y + sinE * dist,
+        c.focus.z + sz * cosE * dist
+      );
+
+      // Ease from the gameplay view into the composed shot, then hold it.
+      const k = c.easeSeconds > 0 ? smootherstep(clamp01(c.elapsed / c.easeSeconds)) : 1;
+      this.currentPos.set(
+        lerp(c.fromPos.x, this._tmp.x, k),
+        lerp(c.fromPos.y, this._tmp.y, k),
+        lerp(c.fromPos.z, this._tmp.z, k)
+      );
+      this.target.set(
+        lerp(c.fromTarget.x, c.focus.x, k),
+        lerp(c.fromTarget.y, c.focus.y, k),
+        lerp(c.fromTarget.z, c.focus.z, k)
+      );
 
       this.camera.position.copy(this.currentPos);
       if (shakeOffset) this.camera.position.add(shakeOffset);

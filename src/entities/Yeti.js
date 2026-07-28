@@ -133,13 +133,18 @@
     }
 
     /**
-     * Step out directly in front of the player for a face-to-face greeting.
-     * Places the Yeti a few metres ahead of the boy (in the direction he is
-     * facing), snapped to the ground, and turns to look him in the eye.
+     * Step out directly in front of the player for a face-to-face greeting,
+     * leaving roughly a 1.5–2 m gap between the two characters:
+     *
+     *   Player 😊 |\   1.5–2 m   /| 🐻 Yeti
+     *
+     * Places the Yeti Config.yeti.greetDistance ahead of the boy (in the
+     * direction he is facing), snapped to the ground, and turns to look him
+     * in the eye.
      * @returns {THREE.Vector3} the Yeti's new world position (for VFX).
      */
     appearInFrontOf(playerPos, playerYaw, course) {
-      const dist = 5.0;
+      const dist = (this.cfg.yeti && this.cfg.yeti.greetDistance) || 5.0;
       const fx = Math.sin(playerYaw);
       const fz = Math.cos(playerYaw);
       let nx = playerPos.x + fx * dist;

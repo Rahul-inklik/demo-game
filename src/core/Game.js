@@ -58,6 +58,7 @@
 
       this._wirePlayer();
       this._wireInput();
+      this._wireBridge();
 
       this.gameManager = new TFW.GameManager({
         config: this.config,
@@ -155,6 +156,21 @@
       this.player.onFall = () => this.gameManager.onPlayerFall();
     }
 
+    /** Ties the collapsing bridge's warning shake / plank-fall moments to camera shake and SFX. */
+    _wireBridge() {
+      const bridge = this.course.bridge;
+      if (!bridge) return;
+      const fx = this.effects;
+      const audio = this.audio;
+      bridge.onShakeStart = () => {
+        fx.shake(0.18);
+        if (audio.wrong) audio.wrong(); // short, alarming stinger — reuses the existing "uh oh" sound
+      };
+      bridge.onPlankFall = (pos) => {
+        fx.landPuff(pos, 0.6);
+      };
+    }
+
     _wireInput() {
       this.input.onPauseRequested = () => this.togglePause();
       this.input.addKeyListener((code) => this._onKey(code));
@@ -196,6 +212,7 @@
       this.ui.fadeIn();
 
       this.cameraController.stopCinematic();
+      this.cameraController.stopConversation();
       this.audio.stopMusic();
       this.audio.tempo = 92;
       this.audio.startAmbience();
@@ -216,6 +233,7 @@
       this.ui.fadeIn();
       this.ui.exitFullscreen();
       this.cameraController.stopCinematic();
+      this.cameraController.stopConversation();
       this.audio.stopMusic();
       this.audio.setDucked(false);
       this.input.exitPointerLock();
@@ -284,7 +302,7 @@
 
       // Always animate the living world so menus/title have life behind them.
       this.environment.update(dt, this._focus);
-      this.course.update(dt, 1);
+      this.course.update(dt, 1, this.player.position);
       this.yeti.update(dt);
       this.effects.update(dt);
 
@@ -297,6 +315,12 @@
 
       this.input.setEnabled(this.mode === 'running');
       this.input.update(dt);
+
+      // Advance the touch pad's own timers (the mobile auto-sprint hold) before
+      // the move/run intent is read below, so a sprint engages on the very frame
+      // it is earned. Touch events cannot do this on their own: a thumb held
+      // still at full deflection stops firing touchmove.
+      if (this.touch) this.touch.update(dt);
 
       if (active) {
         this.cameraController.applyLook(this.input.consumeLook());

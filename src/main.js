@@ -95,6 +95,13 @@
 
     ui.setProgress(1, 'Ready!');
 
+    // Remember the player's mute choice across visits/reloads.
+    const MUTE_KEY = 'tfw.muted';
+    let savedMute = false;
+    try { savedMute = global.localStorage.getItem(MUTE_KEY) === '1'; } catch (e) { /* storage blocked — default to sound on */ }
+    game.audio.setMuted(savedMute);
+    ui.initMute(savedMute);
+
     ui.bind({
       onUiSound: () => { if (game.audio && game.audio.ctx) game.audio.uiClick(); },
       onPlay: () => game.startGame(),
@@ -103,6 +110,10 @@
       onRestart: () => game.restart(),
       onReturnTitle: () => game.returnToTitle(),
       onSignClose: () => game.gameManager.closeSign(),
+      onMuteChanged: (muted) => {
+        game.audio.setMuted(muted);
+        try { global.localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (e) { /* storage blocked — fine, just won't persist */ }
+      },
     });
 
     ui.showTitle();

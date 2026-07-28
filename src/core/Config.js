@@ -104,6 +104,7 @@
       model: {
         enabled: false,
         url: 'assets/models/character.glb',
+        
         // Exact AnimationClip names from your file. Pre-filled here for the
         // standard Mixamo action set this game was tuned for:
         //   Idle, Run, Fast_Run, Jump, Left Turn, Right Turn, Talking, Victory
@@ -166,6 +167,36 @@
       collisionInRate: 16,
       /** ...but ease back out slowly so it never looks like a self-zoom. */
       collisionOutRate: 2.2,
+
+      /**
+       * Cinematic dialogue camera (the "two-shot" used while the boy talks to
+       * the Yeti) — see CameraController.startConversation.
+       *
+       * The shot is a raised three-quarter angle looking DOWN on both
+       * characters, which is what keeps the much-taller Yeti and the small boy
+       * both comfortably inside the frame instead of the Yeti filling the
+       * screen. The framing distance is solved from the camera's real fov and
+       * aspect every time, so it is correct on phones and desktops alike.
+       */
+      dialogue: {
+        /** How far the camera looks down on the pair, in radians (~30°). */
+        elevation: 0.52,
+        /** Rotation off dead-perpendicular, in radians — gives a 3/4 view. */
+        skew: 0.42,
+        /** Extra breathing room left/right and above/below the pair (metres). */
+        padH: 1.8,
+        padV: 1.5,
+        /** Never sit closer than this, however small the pair measures. */
+        minDistance: 7,
+        /** Seconds for the camera to glide from gameplay view into the shot. */
+        easeSeconds: 1.15,
+        /** Gentle dolly-in over the conversation: fraction of distance, and how long. */
+        pushIn: 0.07,
+        pushInSeconds: 7,
+        /** Slow orbital drift so the held shot never feels frozen. */
+        driftAmount: 0.07,
+        driftSpeed: 0.22,
+      },
     },
 
     gameplay: {
@@ -181,6 +212,63 @@
       fallDepth: 26,
       respawnDelay: 0.85,
       interactRange: 4.2,
+    },
+
+    /**
+     * On-screen touch controls — mobile only (TouchControls.js is created just
+     * for touch devices, see DeviceProfile).
+     *
+     * Sprinting is AUTOMATIC, the way PUBG Mobile and Free Fire do it: the Run
+     * button is never required. Push the thumbstick fully forward and simply
+     * keep holding it there — after `sprintHoldTime` seconds the boy breaks
+     * into a sprint on his own and stays sprinting until the stick eases back
+     * off. Player speed (and therefore the Idle/Walk/Run animation the mixer
+     * plays) follows from that automatically, since Player.js picks its clip
+     * from real movement speed.
+     */
+    touch: {
+      /**
+       * Seconds the stick must be held past `sprintJoystickThreshold` before
+       * the sprint kicks in.
+       */
+      sprintHoldTime: 3.0,
+      /** Stick deflection (0..1) that counts as "pushed fully forward". */
+      sprintJoystickThreshold: 0.9,
+      /**
+       * Once sprinting, keep going until deflection drops below this. The gap
+       * between the two thresholds is what stops the sprint flickering off when
+       * the thumb drifts a few pixels while steering.
+       */
+      sprintReleaseThreshold: 0.62,
+      /**
+       * How "forward" the stick must point to begin charging a sprint, as the
+       * cosine of the angle away from straight up (0.55 ≈ a 57° cone either
+       * side of forward). Sideways and backwards pushes stay a walk.
+       */
+      sprintForwardBias: 0.55,
+      /**
+       * How fast the charge-up bleeds away when the stick eases off, as a
+       * multiple of real time. Above 1 so a deliberate release cancels quickly,
+       * while a momentary wobble costs barely any progress.
+       */
+      sprintDecayRate: 2.2,
+    },
+
+    /**
+     * The collapsing wooden bridge over Chandani Gorge (see src/entities/Bridge.js).
+     * Stepping onto the deck shakes it briefly as a warning, then planks fall
+     * one by one, chasing the player toward whichever end is closer to the
+     * side they entered from.
+     */
+    bridge: {
+      /** Seconds the deck shakes before the first plank falls. */
+      shakeDuration: 1.1,
+      /** How far planks jostle during the shake (world units). */
+      shakeAmplitude: 0.05,
+      /** Seconds between each additional plank giving way. */
+      plankFallInterval: 0.22,
+      /** Seconds a single plank takes to tip and drop out of the way. */
+      plankFallDuration: 0.9,
     },
 
     /** Elevation of the trail centre along +Z (the climb axis). */
@@ -297,6 +385,19 @@
       name: 'Bholu the Yeti',
       position: { x: 4, z: 297 },
       triggerRadius: 7.5,
+      /**
+       * Centre-to-centre distance (world units ≈ metres) the Yeti steps to
+       * when appearing for the face-to-face greeting:
+       *
+       *   Player 😊 |\   1.5–2 m   /| 🐻 Yeti
+       *
+       * The Yeti is a big, scaled-up giant (body radius ≈ 1.62 m facing the
+       * player) and the boy has a body radius of Config.player.radius (0.55 m),
+       * so this value already accounts for both bodies — the actual visible
+       * gap between them works out to roughly 1.5–2 m, not a plain
+       * human-scale distance.
+       */
+      greetDistance: 3.9,
       greeting: [
         'Namaste, little warrior! I am Bholu, keeper of these snows.',
         'You carried the Tiranga all the way up here? How brave!',

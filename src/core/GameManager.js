@@ -61,11 +61,13 @@
       const spawnVec = new THREE.Vector3(sp.x, groundY, sp.z);
       c.player.reset(spawnVec, this.cfg.player.spawnYaw);
       c.camera.stopCinematic();
+      c.camera.stopConversation();
       c.camera.snapTo(c.player.getHeadPosition(), this.cfg.player.spawnYaw);
 
       // Claim base camp immediately.
       this.respawnPoint = { x: sp.x, z: sp.z, yaw: this.cfg.player.spawnYaw };
       c.course.checkpoints[0].activate();
+      c.course.resetBridge();
       this.objective = c.course.checkpoints[0].objective;
       this.checkpointName = c.course.checkpoints[0].name;
 
@@ -182,6 +184,10 @@
           this._gameOver('You ran out of lives on the climb. Dust off the snow and try again, brave warrior!');
           return;
         }
+        // Give the bridge back its planks so a fall through the collapsing
+        // crossing is a fair retry rather than a permanently broken bridge.
+        this.ctx.course.resetBridge();
+        this.ctx.camera.stopConversation();
         const rp = this.respawnPoint;
         const y = this.ctx.course.surfaceHeightAt(rp.x, rp.z).y;
         const vec = new THREE.Vector3(rp.x, y, rp.z);
@@ -279,6 +285,13 @@
       const player = this.ctx.player;
       const yetiPos = this.ctx.yeti.appearInFrontOf(player.position, player.yaw, this.ctx.course);
       player.yaw = Math.atan2(yetiPos.x - player.position.x, yetiPos.z - player.position.z);
+
+      // Pull the camera around into a two-shot so the boy and the Yeti are both
+      // on screen for the whole greeting + quiz conversation.
+      this.ctx.camera.startConversation(player.position, yetiPos, {
+        aHeight: this.cfg.player.height,
+        bHeight: 6.8, // the Yeti is a big scaled-up giant (see Yeti.js SCALE)
+      });
       this.ctx.effects.burst(new THREE.Vector3(yetiPos.x, yetiPos.y + 1.2, yetiPos.z), {
         additive: false, count: 40, color: 0xffffff,
         speedMin: 2, speedMax: 7, upMin: 0.2, upMax: 1.1,
@@ -340,6 +353,9 @@
       this.ctx.ui.hideQuiz();
       this.ctx.audio.setDucked(false);
       this.state = STATE.PLAYING;
+      // The chat is over and the boy can walk again, so hand the camera back
+      // to the normal follow view.
+      this.ctx.camera.stopConversation();
       this.ctx.player.setControlEnabled(true);
       this.objective = 'Plant the Tiranga at the summit!';
       this.checkpointName = 'The Summit Awaits';
@@ -456,6 +472,7 @@
     _gameOver(message) {
       this.state = STATE.GAMEOVER;
       this.ctx.ui.hideQuiz();
+      this.ctx.camera.stopConversation();
       this.ctx.audio.setDucked(false);
       this.ctx.audio.wrong();
       this.ctx.ui.showGameOver(message);

@@ -43,25 +43,32 @@
 
   <!-- ===== Title screen ===== -->
   <div id="title-screen" class="screen">
-      
-      <div class="tri-bar big"><span></span><span></span><span></span></div>
-      <h1 class="game-title">The Flag Warrior</h1>
-      <h2 class="game-subtitle">Kids' Tiranga Quest</h2>
-      <p class="game-tagline">Climb the snowy Himalayas, learn our history, and plant the Tiranga at the summit.</p>
+    <button class="btn-icon-toggle btn-mute" id="btn-mute-title" type="button" aria-pressed="false" aria-label="Mute music and sound">
+      <span class="mute-icon" aria-hidden="true">🔊</span>
+    </button>
+    <div class="title-wrap">
+      <div class="title-hero">
+        <div class="tri-bar big"><span></span><span></span><span></span></div>
+        <h1 class="game-title">The Flag Warrior</h1>
+        <h2 class="game-subtitle">Kids' Tiranga Quest</h2>
+        <p class="game-tagline">Climb the snowy Himalayas, learn our history, and plant the Tiranga at the summit.</p>
 
-      <button class="btn btn-primary btn-xl" id="btn-play" type="button">▶ Play</button>
+        <button class="btn btn-primary btn-xl" id="btn-play" type="button"><span class="btn-play-ico">▶</span> Play</button>
+
+        <p class="credits">An original educational adventure • Score, lives, checkpoints and a friendly Yeti await.</p>
+      </div>
 
       <div class="controls-card">
         <h3>Controls</h3>
         <ul class="controls-grid" id="controls-keys">
-          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <span>or Arrows — Move</span></li>
-          <li><kbd>Shift</kbd> <span>Run</span></li>
-          <li><kbd>Space</kbd> <span>Jump</span></li>
-          <li><kbd>E</kbd> <span>Interact</span></li>
-          <li><kbd>Mouse</kbd> <span>Rotate camera (click to look)</span></li>
-          <li><kbd>Wheel</kbd> <span>Zoom</span></li>
-          <li><kbd>P</kbd> <span>Pause menu</span></li>
-          <li><kbd>1</kbd>–<kbd>4</kbd> <span>Answer the quiz</span></li>
+          <li><span class="ctrl-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span> <span>or Arrows — Move</span></li>
+          <li><span class="ctrl-keys"><kbd>Shift</kbd></span> <span>Run</span></li>
+          <li><span class="ctrl-keys"><kbd>Space</kbd></span> <span>Jump</span></li>
+          <li><span class="ctrl-keys"><kbd>E</kbd></span> <span>Interact</span></li>
+          <li><span class="ctrl-keys"><kbd>Mouse</kbd></span> <span>Rotate camera (click to look)</span></li>
+          <li><span class="ctrl-keys"><kbd>Wheel</kbd></span> <span>Zoom</span></li>
+          <li><span class="ctrl-keys"><kbd>P</kbd></span> <span>Pause menu</span></li>
+          <li><span class="ctrl-keys"><kbd>1</kbd>–<kbd>4</kbd></span> <span>Answer the quiz</span></li>
         </ul>
         <ul class="controls-grid" id="controls-touch" hidden>
           <li><b class="tc">◉</b> <span>Left thumbstick — Move</span></li>
@@ -74,7 +81,6 @@
           <li><b class="tc">⏸</b> <span>Pause, top right</span></li>
         </ul>
       </div>
-      <p class="credits">An original educational adventure • Score, lives, checkpoints and a friendly Yeti await.</p>
     </div>
   </div>
 
@@ -91,7 +97,12 @@
         <div class="hud-card-row"><span class="hud-key">Objective</span><span id="hud-objective">Start climbing</span></div>
         <div class="hud-card-row"><span class="hud-key">Altitude</span><span id="hud-altitude">0 m</span></div>
       </div>
-      <button class="btn btn-ghost btn-small" id="btn-pause" type="button">⏸ Pause (P)</button>
+      <div class="hud-buttons">
+        <button class="btn-icon-toggle btn-mute" id="btn-mute-hud" type="button" aria-pressed="false" aria-label="Mute music and sound">
+          <span class="mute-icon" aria-hidden="true">🔊</span>
+        </button>
+        <button class="btn btn-ghost btn-small" id="btn-pause" type="button">⏸ Pause (P)</button>
+      </div>
     </div>
 
     <div id="interact-prompt" class="interact-prompt"><kbd>E</kbd><span id="interact-label">Interact</span></div>
@@ -206,6 +217,7 @@
   <script src="src/entities/Flag.js"></script>
   <script src="src/entities/Checkpoint.js"></script>
   <script src="src/entities/Signboard.js"></script>
+  <script src="src/entities/Bridge.js"></script>
   <script src="src/world/Course.js"></script>
   <script src="src/entities/CharacterRig.js"></script>
   <script src="src/entities/GLTFCharacter.js"></script>

@@ -79,7 +79,9 @@
       const cfg = TFW.Config.audio;
 
       this.master = this.ctx.createGain();
-      this.master.gain.value = cfg.masterVolume;
+      // Respect a mute choice made before the AudioContext existed (e.g. the
+      // player muted from the title screen before pressing Play).
+      this.master.gain.value = this.enabled ? cfg.masterVolume : 0;
       this.master.connect(this.ctx.destination);
 
       this.musicBus = this.ctx.createGain();

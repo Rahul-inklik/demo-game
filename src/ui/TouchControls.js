@@ -8,9 +8,16 @@
  * branches at all.
  *
  * Layout:
- *   • left half  → virtual thumbstick (walk; push past the ring edge to run)
+ *   • left half  → virtual thumbstick (walk; hold it fully forward to sprint)
  *   • right half → drag to orbit the camera, pinch to zoom
  *   • buttons    → Jump, Interact (E), Run toggle, Pause
+ *
+ * Auto-sprint (PUBG Mobile / Free Fire style): pushing the stick fully forward
+ * and holding it there for Config.touch.sprintHoldTime seconds starts a sprint
+ * by itself — the Run button is only a convenience latch, never a requirement.
+ * A ring around the stick fills up while the hold charges so the player can see
+ * it coming. Because a thumb held perfectly still stops firing touchmove events,
+ * that timer is advanced from the game loop via update(dt), not from events.
  */
 (function (global) {
   'use strict';
@@ -19,8 +26,16 @@
   const { clamp, clamp01 } = TFW.Utils;
 
   const STICK_RADIUS = 62;   // px, visual ring radius
-  const RUN_THRESHOLD = 0.94; // push the stick to the ring edge to start running
   const DEAD_ZONE = 0.12;
+
+  /** Used only if Config.touch is somehow absent; the real values live there. */
+  const SPRINT_DEFAULTS = {
+    sprintHoldTime: 3.0,
+    sprintJoystickThreshold: 0.9,
+    sprintReleaseThreshold: 0.62,
+    sprintForwardBias: 0.55,
+    sprintDecayRate: 2.2,
+  };
 
   class TouchControls {
     /**
@@ -38,6 +53,15 @@
       this._stickId = null;
       this._stickOrigin = { x: 0, y: 0 };
       this._stickVec = { x: 0, y: 0 };
+      /** Current stick deflection, 0..1, and how far forward it points, 0..1. */
+      this._stickMag = 0;
+      this._stickForward = 0;
+
+      /** Auto-sprint: seconds of full-forward hold banked so far, and the result. */
+      this._sprintHold = 0;
+      this._autoSprint = false;
+      this._chargeShown = -1;
+      this._sprintTuning = {};
 
       this._lookId = null;
       this._lookLast = { x: 0, y: 0 };
@@ -63,7 +87,10 @@
       // Left: movement zone + thumbstick.
       this.moveZone = el('touch-zone touch-zone-move');
       this.stick = el('touch-stick');
+      // Ring that fills clockwise while the auto-sprint hold charges up.
+      this.stickCharge = el('touch-stick-charge');
       this.stickKnob = el('touch-stick-knob');
+      this.stick.appendChild(this.stickCharge);
       this.stick.appendChild(this.stickKnob);
       this.moveZone.appendChild(this.stick);
 
@@ -138,10 +165,14 @@
           this._stickActive = false;
           this._stickId = null;
           this._stickVec.x = this._stickVec.y = 0;
+          this._stickMag = 0;
+          this._stickForward = 0;
           this.stick.classList.remove('active');
           this.stickKnob.style.transform = 'translate(-50%, -50%)';
           this.input.setExternalMove(0, 0, 0);
-          this.input.setExternalRun(this.runLatched);
+          // Lifting the thumb always ends the sprint and discards its charge.
+          this._cancelSprint();
+          this._applyRun();
         }
       };
 
@@ -234,8 +265,11 @@
       let dy = cy - this._stickOrigin.y;
       const len = Math.hypot(dx, dy);
       const max = STICK_RADIUS;
-      // Normalised magnitude, allowed to exceed 1 slightly to trigger running.
-      const mag = len / max;
+      const mag = clamp01(len / max);
+      // How far towards the top of the screen the thumb is pushed, as a 0..1
+      // cosine. Measured from the raw delta, before the knob gets clamped to the
+      // ring, so it stays accurate once the stick is pinned at full deflection.
+      const forward = len > 0.0001 ? -dy / len : 0;
       if (len > max) {
         dx = (dx / len) * max;
         dy = (dy / len) * max;
@@ -244,29 +278,102 @@
 
       const nx = len > 0.0001 ? (cx - this._stickOrigin.x) / Math.max(len, max) : 0;
       const ny = len > 0.0001 ? (cy - this._stickOrigin.y) / Math.max(len, max) : 0;
-      const m = clamp01(mag);
-      if (m < DEAD_ZONE) {
+      if (mag < DEAD_ZONE) {
         this._stickVec.x = this._stickVec.y = 0;
+        this._stickMag = 0;
+        this._stickForward = 0;
         this.input.setExternalMove(0, 0, 0);
-        this.input.setExternalRun(this.runLatched);
-        this.stick.classList.remove('running');
+        // Thumb back at the centre is a deliberate stop, so end the sprint now
+        // instead of waiting for the next update(dt).
+        this._cancelSprint();
+        this._applyRun();
         return;
       }
       // Screen space: up on the stick means forward in the game.
-      const scaled = (m - DEAD_ZONE) / (1 - DEAD_ZONE);
+      const scaled = (mag - DEAD_ZONE) / (1 - DEAD_ZONE);
       this._stickVec.x = clamp(nx, -1, 1);
       this._stickVec.y = clamp(-ny, -1, 1);
+      this._stickMag = mag;
+      this._stickForward = forward;
       this.input.setExternalMove(this._stickVec.x, this._stickVec.y, clamp01(scaled));
 
-      const pushRun = mag >= RUN_THRESHOLD;
-      this.input.setExternalRun(this.runLatched || pushRun);
-      this.stick.classList.toggle('running', this.runLatched || pushRun);
+      // Whether this counts as a sprint is decided in update(dt), which is the
+      // only place that sees elapsed time.
+      this._applyRun();
+    }
+
+    // --------------------------------------------------------- auto-sprint
+
+    /**
+     * Per-frame tick, called from the game loop before the move intent is read.
+     *
+     * Holding the stick fully forward banks time; once Config.touch.sprintHoldTime
+     * is reached the sprint latches on and stays on through steering, only
+     * dropping when the stick eases back past sprintReleaseThreshold. That
+     * hysteresis gap is what makes it feel like PUBG Mobile rather than a run
+     * flag that stutters every time the thumb moves.
+     */
+    update(dt) {
+      if (!this.enabled) return;
+      const cfg = this._sprintCfg();
+      const mag = this._stickActive ? this._stickMag : 0;
+      const forward = this._stickActive ? this._stickForward : 0;
+
+      if (this._autoSprint) {
+        if (mag < cfg.sprintReleaseThreshold) this._cancelSprint();
+      } else if (mag >= cfg.sprintJoystickThreshold && forward >= cfg.sprintForwardBias) {
+        this._sprintHold = Math.min(cfg.sprintHoldTime, this._sprintHold + dt);
+        if (this._sprintHold >= cfg.sprintHoldTime) this._autoSprint = true;
+      } else if (this._sprintHold > 0) {
+        this._sprintHold = Math.max(0, this._sprintHold - dt * cfg.sprintDecayRate);
+      }
+
+      this._applyRun();
+      const charge = cfg.sprintHoldTime > 0 ? clamp01(this._sprintHold / cfg.sprintHoldTime) : 0;
+      // Once sprinting the ring is redundant (the stick itself lights up), so
+      // hide it and let the charge read as "complete".
+      this._showCharge(this._autoSprint ? 0 : charge);
+    }
+
+    /** Resolve the sprint tuning from Config into a reused object (no per-frame garbage). */
+    _sprintCfg() {
+      const t = (TFW.Config && TFW.Config.touch) || {};
+      const out = this._sprintTuning;
+      for (const k in SPRINT_DEFAULTS) {
+        out[k] = t[k] === undefined ? SPRINT_DEFAULTS[k] : t[k];
+      }
+      return out;
+    }
+
+    /** The one place that decides whether the run intent is on. */
+    _applyRun() {
+      const run = this.runLatched || this._autoSprint;
+      this.input.setExternalRun(run);
+      this.stick.classList.toggle('running', run);
+    }
+
+    _cancelSprint() {
+      this._autoSprint = false;
+      this._sprintHold = 0;
+      this._showCharge(0);
+    }
+
+    /** Drive the charge ring, skipping the DOM write when nothing changed. */
+    _showCharge(p) {
+      const v = clamp01(p);
+      if (v === this._chargeShown) return;
+      // Ignore sub-degree wiggles mid-charge, but always write an exact 0 so the
+      // ring can never be left stuck part-filled.
+      if (v > 0 && Math.abs(v - this._chargeShown) < 0.004) return;
+      this._chargeShown = v;
+      this.stickCharge.style.setProperty('--sprint-charge', (v * 360).toFixed(1) + 'deg');
+      this.stick.classList.toggle('charging', v > 0.001);
     }
 
     _toggleRun() {
       this.runLatched = !this.runLatched;
       this.btnRun.classList.toggle('latched', this.runLatched);
-      this.input.setExternalRun(this.runLatched);
+      this._applyRun();
     }
 
     _beginPinch(e) {
@@ -299,9 +406,12 @@
       this._lookId = null;
       this._pinch = null;
       this._stickVec.x = this._stickVec.y = 0;
+      this._stickMag = 0;
+      this._stickForward = 0;
       this.runLatched = false;
+      this._cancelSprint();
       this.btnRun.classList.remove('latched');
-      this.stick.classList.remove('active', 'running');
+      this.stick.classList.remove('active', 'running', 'charging');
       this.stickKnob.style.transform = 'translate(-50%, -50%)';
       this.input.setExternalMove(0, 0, 0);
       this.input.setExternalRun(false);

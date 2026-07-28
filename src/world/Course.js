@@ -73,68 +73,24 @@
 
     // --------------------------------------------------------- bridge
 
+    /**
+     * The wooden Chandani Gorge crossing. Built and animated by Bridge.js — it
+     * shakes then collapses plank-by-plank once the player steps onto it (see
+     * Bridge.js for the full sequence). Course only owns placement, the
+     * platform registration (so surfaceHeightAt reflects collapsed planks),
+     * and the frozen river decoration at the bottom of the gorge.
+     */
     _buildBridge() {
       const p = this.cfg.Palette;
       const chasm = this.cfg.chasms[0]; // 84 → 108
-      const z0 = 80, z1 = 112;
-      const y0 = 8.7, y1 = 12.8;
-      const cx = 3;
-      const halfW = 2.4;
 
-      const yAt = (z) => lerp(y0, y1, clamp01((z - z0) / (z1 - z0)));
-
-      const group = new THREE.Group();
-      const woodMat = new THREE.MeshStandardMaterial({ color: p.wood, roughness: 0.85, map: this.assets.get('wood') });
-      const darkWood = new THREE.MeshStandardMaterial({ color: p.woodDark, roughness: 0.85 });
-
-      // Planks.
-      const plankGeo = new THREE.BoxGeometry(halfW * 2 + 0.5, 0.18, 1.35);
-      const planks = 21;
-      for (let i = 0; i < planks; i++) {
-        const t = i / (planks - 1);
-        const z = lerp(z0, z1, t);
-        const plank = new THREE.Mesh(plankGeo, i % 2 ? darkWood : woodMat);
-        plank.position.set(cx, yAt(z) - 0.08 + Math.sin(t * Math.PI) * -0.25, z);
-        plank.castShadow = true;
-        plank.receiveShadow = true;
-        group.add(plank);
-      }
-
-      // Snow dusting over the deck.
-      const snowStripGeo = new THREE.BoxGeometry(halfW * 2 + 0.2, 0.06, z1 - z0);
-      const snowStrip = new THREE.Mesh(snowStripGeo, new THREE.MeshStandardMaterial({ color: p.snowLight, roughness: 0.95 }));
-      snowStrip.position.set(cx, yAt((z0 + z1) / 2) + 0.02 - 0.12, (z0 + z1) / 2);
-      group.add(snowStrip);
-
-      // Rails: posts + rope.
-      const postGeo = new THREE.CylinderGeometry(0.1, 0.12, 1.3, 8);
-      const ropeMat = new THREE.MeshStandardMaterial({ color: 0xe9d9b8, roughness: 0.8 });
-      const ropeGeo = new THREE.CylinderGeometry(0.05, 0.05, z1 - z0, 6);
-      [-1, 1].forEach((side) => {
-        for (let i = 0; i < planks; i += 2) {
-          const t = i / (planks - 1);
-          const z = lerp(z0, z1, t);
-          const post = new THREE.Mesh(postGeo, darkWood);
-          post.position.set(cx + side * (halfW + 0.1), yAt(z) + 0.55, z);
-          post.castShadow = true;
-          group.add(post);
-        }
-        const rope = new THREE.Mesh(ropeGeo, ropeMat);
-        rope.rotation.x = Math.PI / 2;
-        const midZ = (z0 + z1) / 2;
-        rope.position.set(cx + side * (halfW + 0.1), yAt(midZ) + 1.05, midZ);
-        // tilt rope to follow the slope
-        rope.rotation.x = Math.PI / 2 + Math.atan2(y1 - y0, z1 - z0);
-        group.add(rope);
-      });
-
-      this.scene.add(group);
-      this.collisionMeshes.push(group);
+      this.bridge = new TFW.Bridge(this.scene, this.assets, this.cfg);
+      this.collisionMeshes.push(this.bridge.group);
 
       this.platforms.push({
         type: 'wood',
-        contains: (x, z) => z >= z0 - 0.5 && z <= z1 + 0.5 && Math.abs(x - cx) <= halfW + 0.3,
-        heightAt: (x, z) => yAt(z),
+        contains: (x, z) => this.bridge.contains(x, z),
+        heightAt: (x, z) => this.bridge.heightAt(x, z),
       });
 
       // A little frozen river glinting at the bottom of the gorge.
@@ -144,7 +100,7 @@
       });
       const river = new THREE.Mesh(new THREE.PlaneGeometry(38, chasm.to - chasm.from + 14), iceMat);
       river.rotation.x = -Math.PI / 2;
-      river.position.set(cx, this.terrain.baseElevationAt((chasm.from + chasm.to) / 2) - chasm.depth + 1.5, (chasm.from + chasm.to) / 2);
+      river.position.set(this.bridge.cx, this.terrain.baseElevationAt((chasm.from + chasm.to) / 2) - chasm.depth + 1.5, (chasm.from + chasm.to) / 2);
       this.scene.add(river);
     }
 
@@ -666,9 +622,11 @@
 
     // --------------------------------------------------------- update
 
-    update(dt, windStrength) {
+    update(dt, windStrength, playerPos) {
       this._time += dt;
       const wind = windStrength || 1;
+
+      if (this.bridge) this.bridge.update(dt, playerPos);
 
       // Sway the pines.
       for (let i = 0; i < this.trees.length; i++) {
@@ -719,9 +677,15 @@
       this.signboards.forEach((s) => s.update(dt));
     }
 
+    /** Restores the bridge's planks — called on respawn and full resets. */
+    resetBridge() {
+      if (this.bridge) this.bridge.reset();
+    }
+
     dispose() {
       this.checkpoints.forEach((c) => c.dispose());
       this.signboards.forEach((s) => s.dispose());
+      if (this.bridge) this.bridge.dispose();
       this.terrain.dispose();
     }
   }

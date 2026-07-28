@@ -47,6 +47,11 @@
       this.hudAltitude = must('hud-altitude');
       this.btnPause = must('btn-pause');
 
+      // Mute — one physical control per screen it appears on (title / HUD),
+      // all kept in sync since they all reflect the same on/off state.
+      this.muteButtons = [must('btn-mute-title'), must('btn-mute-hud')];
+      this._muted = false;
+
       this.interactPrompt = must('interact-prompt');
       this.interactLabel = must('interact-label');
       this.toastArea = must('toast-area');
@@ -125,7 +130,40 @@
       this.btnTitleVictory.addEventListener('click', () => { clickSound(); if (c.onReturnTitle) c.onReturnTitle(); });
       this.btnRestartOver.addEventListener('click', () => { clickSound(); if (c.onRestart) c.onRestart(); });
       this.btnTitleOver.addEventListener('click', () => { clickSound(); if (c.onReturnTitle) c.onReturnTitle(); });
+
+      this.muteButtons.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const muted = this.toggleMute();
+          if (!muted) clickSound(); // only play the confirmation click when turning sound back on
+          if (c.onMuteChanged) c.onMuteChanged(muted);
+        });
+      });
     }
+
+    // -------------------------------------------------------- mute
+
+    /** Restores a previously saved mute preference, applied once at boot. */
+    initMute(muted) {
+      this.setMuted(!!muted);
+    }
+
+    toggleMute() {
+      this.setMuted(!this._muted);
+      return this._muted;
+    }
+
+    setMuted(muted) {
+      this._muted = !!muted;
+      this.muteButtons.forEach((btn) => {
+        btn.classList.toggle('is-muted', this._muted);
+        btn.setAttribute('aria-pressed', String(this._muted));
+        btn.setAttribute('aria-label', this._muted ? 'Unmute music and sound' : 'Mute music and sound');
+        const icon = btn.querySelector('.mute-icon');
+        if (icon) icon.textContent = this._muted ? '🔇' : '🔊';
+      });
+    }
+
+    get muted() { return this._muted; }
 
     // -------------------------------------------------------- fullscreen
 
